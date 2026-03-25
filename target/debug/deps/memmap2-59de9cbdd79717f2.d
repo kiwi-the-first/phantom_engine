@@ -1,0 +1,7 @@
+/home/osii/Dev/Rust/phantom_engine/target/debug/deps/memmap2-59de9cbdd79717f2.d: /home/osii/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.10/src/lib.rs /home/osii/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.10/src/unix.rs /home/osii/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.10/src/advice.rs
+
+/home/osii/Dev/Rust/phantom_engine/target/debug/deps/libmemmap2-59de9cbdd79717f2.rmeta: /home/osii/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.10/src/lib.rs /home/osii/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.10/src/unix.rs /home/osii/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.10/src/advice.rs
+
+/home/osii/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.10/src/lib.rs:
+/home/osii/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.10/src/unix.rs:
+/home/osii/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/memmap2-0.9.10/src/advice.rs:
