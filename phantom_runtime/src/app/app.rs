@@ -3,6 +3,8 @@ use winit::event::WindowEvent;
 use winit::event_loop::ActiveEventLoop;
 use winit::window::{Window, WindowId};
 
+use log::*;
+
 #[derive(Default)]
 pub struct App {
     window: Option<Window>,
@@ -20,7 +22,7 @@ impl ApplicationHandler for App {
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
         match event {
             WindowEvent::CloseRequested => {
-                println!("The close button was pressed; stopping");
+                info!("The close button was pressed; stopping");
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
@@ -44,6 +46,6 @@ impl ApplicationHandler for App {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        log::debug!("RUNNING")
+        debug!("RUNNING")
     }
 }
