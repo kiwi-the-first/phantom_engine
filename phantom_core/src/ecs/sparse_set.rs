@@ -46,6 +46,15 @@ impl<C> SparseSet<C> {
         Some(&self.dense[dense_index as usize])
     }
     // TODO: fn get_mut(entity_id) -> Option<&mut component>
+    pub fn get_mut(&mut self, entity_id: u32) -> Option<&mut C> {
+        let dense_index = *self.sparse.get(entity_id as usize)?;
+
+        if dense_index == INVALID {
+            return None;
+        }
+
+        Some(&mut self.dense[dense_index as usize])
+    }
 }
 
 #[cfg(test)]
@@ -106,5 +115,18 @@ mod tests {
         let mut sparse_set = SparseSet::<u32>::new();
         sparse_set.insert(0, 10);
         assert_eq!(sparse_set.get(1), None);
+    }
+
+    #[test]
+    fn check_get_data_mut() {
+        let mut sparse_set = SparseSet::<u32>::new();
+        // insert entity 0 with a u32 component with data 10
+        sparse_set.insert(0, 10);
+
+        if let Some(val) = sparse_set.get_mut(0) {
+            *val = 100;
+        }
+
+        assert_eq!(sparse_set.get(0), Some(&100u32));
     }
 }
