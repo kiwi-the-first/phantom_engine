@@ -45,7 +45,7 @@ impl<C> SparseSet<C> {
 
         Some(&self.dense[dense_index as usize])
     }
-    // TODO: fn get_mut(entity_id) -> Option<&mut component>
+
     pub fn get_mut(&mut self, entity_id: u32) -> Option<&mut C> {
         let dense_index = *self.sparse.get(entity_id as usize)?;
 
@@ -54,6 +54,21 @@ impl<C> SparseSet<C> {
         }
 
         Some(&mut self.dense[dense_index as usize])
+    }
+
+    pub fn remove(&mut self, entity_id: u32) {
+        let dense_index = self.sparse[entity_id as usize] as usize;
+        let last_index = self.dense.len() - 1;
+        let last_id = self.entity[last_index];
+
+        self.dense.swap(dense_index, last_index);
+        self.entity.swap(dense_index, last_index);
+
+        self.sparse[last_id as usize] = dense_index as u32;
+        self.sparse[entity_id as usize] = INVALID;
+
+        self.dense.pop();
+        self.entity.pop();
     }
 }
 
@@ -128,5 +143,21 @@ mod tests {
         }
 
         assert_eq!(sparse_set.get(0), Some(&100u32));
+    }
+
+    #[test]
+    fn check_remove() {
+        let mut sparse_set = SparseSet::<u32>::new();
+        // insert id 0 with a u32 component type holding data 100
+        sparse_set.insert(0, 100);
+        // insert id 5 with a u32 component type holding data 100
+        sparse_set.insert(5, 100);
+        // insert id 10 with a u32 component type holding data 100
+        sparse_set.insert(10, 100);
+        // leaving sparse set with many invalid spaces
+        // removing from center
+        sparse_set.remove(5);
+        assert_eq!(sparse_set.sparse[5], INVALID);
+        assert_eq!(sparse_set.dense.len(), 2);
     }
 }
