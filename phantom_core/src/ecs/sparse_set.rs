@@ -21,6 +21,10 @@ impl<C> SparseSet<C> {
         }
     }
 
+    pub fn sparse_len(&self) -> usize {
+        self.sparse.len()
+    }
+
     pub fn insert(&mut self, entity_id: u32, component: C) {
         self.ensure_capacity(entity_id);
 

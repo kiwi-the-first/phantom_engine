@@ -3,7 +3,7 @@ use std::{
     collections::HashMap,
 };
 
-use crate::ecs::{SparseSet, components::Transform};
+use crate::ecs::{SparseSet, components::Transform, sparse_set};
 
 pub struct World {
     sparse_set_storage: HashMap<TypeId, Box<dyn Any>>,
@@ -32,12 +32,27 @@ impl World {
             id
         });
 
-        // TODO: give entity a transform immediately
+        self.add_component(entity_id, Transform::default());
 
         entity_id
     }
     // pub fn destroy(entity_id) {}
-    // pub fn add_component<C>(entity_id, component){}
+
+    pub fn add_component<C: Any + 'static>(&mut self, entity_id: u32, component: C) {
+        self.sparse_set_storage
+            .entry(TypeId::of::<C>())
+            .or_insert_with(|| Box::new(SparseSet::<C>::new()));
+
+        let sparse_set = self
+            .sparse_set_storage
+            .get_mut(&TypeId::of::<C>())
+            .expect("Transform sparse set not found")
+            .downcast_mut::<SparseSet<C>>()
+            .expect("Downcast failed");
+
+        sparse_set.insert(entity_id, component);
+    }
+
     // pub fn remove_component<C>(entity_id, component){}
     // pub fn get_component<C>(entity_id, component) -> Option<&C>{}
     // pub fn get_component_mut<C>(entity_id, component) Option<&mut C> {}
@@ -51,6 +66,11 @@ mod tests {
 
     #[test]
     fn check_spawn() {
+        //TODO: test spawning
+    }
+
+    #[test]
+    fn check_add_component() {
         //TODO: test spawning
     }
 }
