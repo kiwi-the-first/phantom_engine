@@ -54,16 +54,24 @@ impl World {
 
         sparse_set.insert(entity_id, component);
     }
-    // pub fn has_component<C>(entity_id, component) -> bool {}
+
     // pub fn remove_component<C>(entity_id, component){}
-    // pub fn get_component<C>(entity_id, component) -> Option<&C>{}
+    pub fn get_component<C: Any + 'static>(&self, entity_id: u32) -> Option<&C> {
+        self.sparse_set_storage
+            .get(&TypeId::of::<C>())
+            .and_then(|sparse_set| sparse_set.downcast_ref::<SparseSet<C>>())
+            .and_then(|sparse_set| sparse_set.get(entity_id))
+    }
     // pub fn get_component_mut<C>(entity_id, component) Option<&mut C> {}
+    // pub fn has_component<C>(entity_id, component) -> bool {}
     // pub fn query_with<C>() -> Vec<entity_id> {}
     // pub fn query_with2<A,B>() -> Vec<entity> {}
 }
 
 #[cfg(test)]
 mod tests {
+    use glam::Vec3;
+
     use super::*;
 
     #[test]
@@ -105,5 +113,14 @@ mod tests {
     #[test]
     fn check_add_component() {
         //TODO: test spawning
+    }
+
+    #[test]
+    fn check_get_component() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.add_component(entity, Transform::default());
+        let transform = world.get_component::<Transform>(entity).unwrap();
+        assert_eq!(transform.position, Vec3::ZERO);
     }
 }

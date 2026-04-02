@@ -4,9 +4,9 @@ use crate::ecs::component::Component;
 
 #[derive(Debug)]
 pub struct Transform {
-    position: Vec3,
-    rotation: Quat,
-    scale: Vec3,
+    pub position: Vec3,
+    pub rotation: Quat,
+    pub scale: Vec3,
 }
 
 impl Component for Transform {}
