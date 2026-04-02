@@ -33,7 +33,11 @@ impl World {
         entity_id
     }
 
-    // pub fn destroy(entity_id) {}
+    // TODO:
+    // pub fn destroy(entity_id) {
+    // SHOULD DESTROY FROM ALL SPARSE SETS
+    // problem: dyn Any hides types cant call remove without knowing Type
+    // }
 
     pub fn add_component<C: Any + 'static>(&mut self, entity_id: u32, component: C) {
         // Make sure sparse set for C exists if not create it
@@ -48,7 +52,14 @@ impl World {
         }
     }
 
-    // pub fn remove_component<C>(entity_id, component){}
+    pub fn remove_component<C: Any + 'static>(&mut self, entity_id: u32) {
+        if let Some(sparse_set) = self.sparse_set_storage.get_mut(&TypeId::of::<C>()) {
+            if let Some(sparse_set) = sparse_set.downcast_mut::<SparseSet<C>>() {
+                sparse_set.remove(entity_id);
+            }
+        }
+    }
+
     pub fn get_component<C: Any + 'static>(&self, entity_id: u32) -> Option<&C> {
         self.sparse_set_storage
             .get(&TypeId::of::<C>())
@@ -144,5 +155,15 @@ mod tests {
             z: 10.0,
         };
         assert_eq!(transform.position, comparison_vec);
+    }
+
+    #[test]
+    fn check_remove_component() {
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.add_component(entity, Transform::default());
+        assert_eq!(world.get_component::<Transform>(entity).is_some(), true);
+        world.remove_component::<Transform>(entity);
+        assert_eq!(world.get_component::<Transform>(entity).is_none(), true);
     }
 }
