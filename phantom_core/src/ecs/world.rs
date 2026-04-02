@@ -111,7 +111,11 @@ mod tests {
 
     #[test]
     fn check_add_component() {
-        //TODO: test spawning
+        let mut world = World::new();
+        let entity = world.spawn();
+        world.add_component(entity, Transform::default());
+        let transform = world.get_component::<Transform>(entity).unwrap();
+        assert_eq!(transform.position, Vec3::ZERO);
     }
 
     #[test]
