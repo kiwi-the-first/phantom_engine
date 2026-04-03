@@ -8,3 +8,6 @@ pub use sparse_set::SparseSet;
 
 pub mod world;
 pub use world::World;
+
+pub mod any_storage;
+pub use any_storage::AnyStorage;

@@ -3,10 +3,10 @@ use std::{
     collections::HashMap,
 };
 
-use crate::ecs::{SparseSet, components::Transform, sparse_set};
+use crate::ecs::{AnyStorage, Component, SparseSet, components::Transform, sparse_set};
 
 pub struct World {
-    sparse_set_storage: HashMap<TypeId, Box<dyn Any>>,
+    sparse_set_storage: HashMap<TypeId, Box<dyn AnyStorage>>,
     next_entity_id: u32,
     deleted_entity_ids: Vec<u32>,
 }
@@ -33,48 +33,67 @@ impl World {
         entity_id
     }
 
-    // TODO:
-    // pub fn destroy(entity_id) {
-    // SHOULD DESTROY FROM ALL SPARSE SETS
-    // problem: dyn Any hides types cant call remove without knowing Type
-    // }
+    pub fn destroy(&mut self, entity_id: u32) {
+        for (_type_id, storage) in self.sparse_set_storage.iter_mut() {
+            storage.remove(entity_id);
+        }
 
-    pub fn add_component<C: Any + 'static>(&mut self, entity_id: u32, component: C) {
+        self.deleted_entity_ids.push(entity_id);
+    }
+
+    pub fn add_component<C: Component>(&mut self, entity_id: u32, component: C) {
         // Make sure sparse set for C exists if not create it
         self.sparse_set_storage
             .entry(TypeId::of::<C>())
             .or_insert_with(|| Box::new(SparseSet::<C>::new()));
 
         if let Some(sparse_set) = self.sparse_set_storage.get_mut(&TypeId::of::<C>()) {
-            if let Some(sparse_set) = sparse_set.downcast_mut::<SparseSet<C>>() {
+            if let Some(sparse_set) = sparse_set.as_any_mut().downcast_mut::<SparseSet<C>>() {
                 sparse_set.insert(entity_id, component);
             }
         }
     }
 
-    pub fn remove_component<C: Any + 'static>(&mut self, entity_id: u32) {
+    pub fn remove_component<C: Component>(&mut self, entity_id: u32) {
         if let Some(sparse_set) = self.sparse_set_storage.get_mut(&TypeId::of::<C>()) {
-            if let Some(sparse_set) = sparse_set.downcast_mut::<SparseSet<C>>() {
+            if let Some(sparse_set) = sparse_set.as_any_mut().downcast_mut::<SparseSet<C>>() {
                 sparse_set.remove(entity_id);
             }
         }
     }
 
-    pub fn get_component<C: Any + 'static>(&self, entity_id: u32) -> Option<&C> {
+    pub fn get_component<C: Component>(&self, entity_id: u32) -> Option<&C> {
         self.sparse_set_storage
             .get(&TypeId::of::<C>())
-            .and_then(|sparse_set| sparse_set.downcast_ref::<SparseSet<C>>())
+            .and_then(|sparse_set| sparse_set.as_any().downcast_ref::<SparseSet<C>>())
             .and_then(|sparse_set| sparse_set.get(entity_id))
     }
 
-    pub fn get_component_mut<C: Any + 'static>(&mut self, entity_id: u32) -> Option<&mut C> {
+    pub fn get_component_mut<C: Component>(&mut self, entity_id: u32) -> Option<&mut C> {
         self.sparse_set_storage
             .get_mut(&TypeId::of::<C>())
-            .and_then(|sparse_set| sparse_set.downcast_mut::<SparseSet<C>>())
+            .and_then(|sparse_set| sparse_set.as_any_mut().downcast_mut::<SparseSet<C>>())
             .and_then(|sparse_set| sparse_set.get_mut(entity_id))
     }
     // pub fn has_component<C>(entity_id, component) -> bool {}
-    // pub fn query_with<C>() -> Vec<entity_id> {}
+
+    // TODO: Change to return Vec<(u32, &C)>
+    pub fn query_with<C: Component>(&self) -> Vec<u32> {
+        let sparse_set = self
+            .sparse_set_storage
+            .get(&TypeId::of::<C>())
+            .and_then(|sparse_set| sparse_set.as_any().downcast_ref::<SparseSet<C>>());
+
+        let mut entities = Vec::new();
+
+        if let Some(sparse_set) = sparse_set {
+            for entity in &sparse_set.entity {
+                entities.push(*entity);
+            }
+        }
+
+        entities
+    }
     // pub fn query_with2<A,B>() -> Vec<entity> {}
 }
 
@@ -114,6 +133,7 @@ mod tests {
             .sparse_set_storage
             .get(&TypeId::of::<Transform>())
             .unwrap()
+            .as_any()
             .downcast_ref::<SparseSet<Transform>>()
             .unwrap();
 

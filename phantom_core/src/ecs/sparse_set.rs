@@ -1,9 +1,23 @@
-use crate::constants::constants::INVALID;
+use std::any::Any;
+
+use crate::{constants::constants::INVALID, ecs::AnyStorage};
 
 pub struct SparseSet<C> {
-    sparse: Vec<u32>, // Index: entity id , Value: dense index
-    dense: Vec<C>,    // Index: entity index, Value: data
-    entity: Vec<u32>, // Index: dense index , Value: entity id
+    sparse: Vec<u32>,     // Index: entity id , Value: dense index
+    dense: Vec<C>,        // Index: entity index, Value: data
+    pub entity: Vec<u32>, // Index: dense index , Value: entity id
+}
+
+impl<C: Any + 'static> AnyStorage for SparseSet<C> {
+    fn remove(&mut self, entity_id: u32) {
+        self.remove(entity_id);
+    }
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
+    fn as_any_mut(&mut self) -> &mut dyn Any {
+        self
+    }
 }
 
 impl<C> SparseSet<C> {
@@ -61,6 +75,18 @@ impl<C> SparseSet<C> {
     }
 
     pub fn remove(&mut self, entity_id: u32) {
+        if entity_id as usize >= self.sparse.len() {
+            return;
+        }
+
+        if self.sparse[entity_id as usize] == INVALID {
+            return;
+        }
+
+        if self.dense.is_empty() {
+            return;
+        }
+
         let dense_index = self.sparse[entity_id as usize] as usize;
         let last_index = self.dense.len() - 1;
         let last_id = self.entity[last_index];
@@ -164,4 +190,10 @@ mod tests {
         assert_eq!(sparse_set.sparse[5], INVALID);
         assert_eq!(sparse_set.dense.len(), 2);
     }
+
+    #[test]
+    fn check_destroy() {}
+
+    #[test]
+    fn check_query() {}
 }
