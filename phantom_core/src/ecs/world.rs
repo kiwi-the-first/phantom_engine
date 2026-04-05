@@ -94,7 +94,18 @@ impl World {
 
         entities
     }
-    // pub fn query_with2<A,B>() -> Vec<entity> {}
+    pub fn query_with2<A: Component, B: Component>(&self) -> Vec<u32> {
+        let entities_a = self.query_with::<A>();
+        let entities_b = self.query_with::<B>();
+
+        let result = entities_a
+            .iter()
+            .filter(|x| entities_b.contains(x))
+            .copied()
+            .collect();
+
+        result
+    }
 }
 
 #[cfg(test)]

@@ -192,8 +192,12 @@ mod tests {
     }
 
     #[test]
-    fn check_destroy() {}
+    fn check_destroy() {
+        //TODO: Test
+    }
 
     #[test]
-    fn check_query() {}
+    fn check_query() {
+        //TODO: Test
+    }
 }
