@@ -16,7 +16,7 @@ impl Default for Transform {
         Self {
             position: Vec3::ZERO,
             rotation: Quat::IDENTITY,
-            scale: Vec3::ZERO,
+            scale: Vec3::ONE,
         }
     }
 }
