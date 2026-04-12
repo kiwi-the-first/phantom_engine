@@ -41,7 +41,7 @@ impl World {
         self.deleted_entity_ids.push(entity_id);
     }
 
-    pub fn add_component<C: Component>(&mut self, entity_id: u32, component: C) {
+    pub fn add_component<C: Component>(&mut self, entity_id: u32, component: C) -> &mut C {
         // Make sure sparse set for C exists if not create it
         self.sparse_set_storage
             .entry(TypeId::of::<C>())
@@ -52,6 +52,8 @@ impl World {
                 sparse_set.insert(entity_id, component);
             }
         }
+
+        self.get_component_mut(entity_id).unwrap()
     }
 
     pub fn remove_component<C: Component>(&mut self, entity_id: u32) {
