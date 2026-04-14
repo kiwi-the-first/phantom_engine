@@ -2,7 +2,7 @@ use glam::*;
 
 use crate::ecs::component::Component;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct Transform {
     pub position: Vec3,
     pub rotation: Quat,

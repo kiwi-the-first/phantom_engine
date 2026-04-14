@@ -3,12 +3,13 @@ use std::{
     collections::HashMap,
 };
 
-use crate::ecs::{AnyStorage, Component, SparseSet, components::Transform, sparse_set};
+use crate::ecs::{AnyStorage, Component, Entity, SparseSet, components::Transform, sparse_set};
 
 pub struct World {
     sparse_set_storage: HashMap<TypeId, Box<dyn AnyStorage>>,
     next_entity_id: u32,
-    deleted_entity_ids: Vec<u32>,
+    deleted_entity_ids: Vec<Entity>,
+    generations: Vec<u32>,
 }
 
 impl World {
@@ -17,31 +18,40 @@ impl World {
             sparse_set_storage: HashMap::new(),
             next_entity_id: 0,
             deleted_entity_ids: Vec::new(),
+            generations: Vec::new(),
         }
     }
 
-    pub fn spawn(&mut self) -> u32 {
+    pub fn summon(&mut self) -> Entity {
         // Generate entity_id
-        let entity_id = self.deleted_entity_ids.pop().unwrap_or_else(|| {
+        let entity = self.deleted_entity_ids.pop().unwrap_or_else(|| {
             let id = self.next_entity_id;
             self.next_entity_id = self.next_entity_id + 1;
-            id
+            self.generations.push(0);
+            Entity {
+                id: id,
+                generation: 0,
+            }
         });
         // Add transform by default
-        self.add_component(entity_id, Transform::default());
+        self.add_component(entity, Transform::default());
 
-        entity_id
+        entity
     }
 
-    pub fn destroy(&mut self, entity_id: u32) {
+    pub fn destroy(&mut self, entity: Entity) {
         for (_type_id, storage) in self.sparse_set_storage.iter_mut() {
-            storage.remove(entity_id);
+            storage.remove(entity.id);
         }
 
-        self.deleted_entity_ids.push(entity_id);
+        self.generations[entity.id as usize] += 1;
+        self.deleted_entity_ids.push(Entity {
+            id: entity.id,
+            generation: self.generations[entity.id as usize],
+        });
     }
 
-    pub fn add_component<C: Component>(&mut self, entity_id: u32, component: C) -> &mut C {
+    pub fn add_component<C: Component>(&mut self, entity: Entity, component: C) -> &mut C {
         // Make sure sparse set for C exists if not create it
         self.sparse_set_storage
             .entry(TypeId::of::<C>())
@@ -49,38 +59,45 @@ impl World {
 
         if let Some(sparse_set) = self.sparse_set_storage.get_mut(&TypeId::of::<C>()) {
             if let Some(sparse_set) = sparse_set.as_any_mut().downcast_mut::<SparseSet<C>>() {
-                sparse_set.insert(entity_id, component);
+                sparse_set.insert(entity.id, component);
             }
         }
 
-        self.get_component_mut(entity_id).unwrap()
+        self.get_component_mut(entity).unwrap()
     }
 
-    pub fn remove_component<C: Component>(&mut self, entity_id: u32) {
+    pub fn remove_component<C: Component>(&mut self, entity: Entity) {
         if let Some(sparse_set) = self.sparse_set_storage.get_mut(&TypeId::of::<C>()) {
             if let Some(sparse_set) = sparse_set.as_any_mut().downcast_mut::<SparseSet<C>>() {
-                sparse_set.remove(entity_id);
+                sparse_set.remove(entity.id);
             }
         }
     }
 
-    pub fn get_component<C: Component>(&self, entity_id: u32) -> Option<&C> {
+    pub fn get_component<C: Component>(&self, entity: Entity) -> Option<&C> {
+        if entity.generation != self.generations[entity.id as usize] {
+            return None;
+        }
+
         self.sparse_set_storage
             .get(&TypeId::of::<C>())
             .and_then(|sparse_set| sparse_set.as_any().downcast_ref::<SparseSet<C>>())
-            .and_then(|sparse_set| sparse_set.get(entity_id))
+            .and_then(|sparse_set| sparse_set.get(entity.id))
     }
 
-    pub fn get_component_mut<C: Component>(&mut self, entity_id: u32) -> Option<&mut C> {
+    pub fn get_component_mut<C: Component>(&mut self, entity: Entity) -> Option<&mut C> {
+        if entity.generation != self.generations[entity.id as usize] {
+            return None;
+        }
         self.sparse_set_storage
             .get_mut(&TypeId::of::<C>())
             .and_then(|sparse_set| sparse_set.as_any_mut().downcast_mut::<SparseSet<C>>())
-            .and_then(|sparse_set| sparse_set.get_mut(entity_id))
+            .and_then(|sparse_set| sparse_set.get_mut(entity.id))
     }
     // pub fn has_component<C>(entity_id, component) -> bool {}
 
     // TODO: Change to return Vec<(u32, &C)>
-    pub fn query_with<C: Component>(&self) -> Vec<u32> {
+    pub fn query_with<C: Component>(&self) -> Vec<Entity> {
         let sparse_set = self
             .sparse_set_storage
             .get(&TypeId::of::<C>())
@@ -89,14 +106,17 @@ impl World {
         let mut entities = Vec::new();
 
         if let Some(sparse_set) = sparse_set {
-            for entity in &sparse_set.entity {
-                entities.push(*entity);
+            for entity_id in &sparse_set.entity {
+                entities.push(Entity {
+                    id: *entity_id,
+                    generation: self.generations[*entity_id as usize],
+                });
             }
         }
 
         entities
     }
-    pub fn query_with2<A: Component, B: Component>(&self) -> Vec<u32> {
+    pub fn query_with2<A: Component, B: Component>(&self) -> Vec<Entity> {
         let entities_a = self.query_with::<A>();
         let entities_b = self.query_with::<B>();
 
@@ -119,7 +139,7 @@ mod tests {
     #[test]
     fn check_spawn_generates_transform() {
         let mut world = World::new();
-        world.spawn();
+        world.summon();
 
         assert_eq!(
             world
@@ -132,16 +152,16 @@ mod tests {
     #[test]
     fn check_spawn_generates_correct_id() {
         let mut world = World::new();
-        let entity_zero = world.spawn();
-        let entity_one = world.spawn();
-        assert_eq!(entity_zero, 0);
-        assert_eq!(entity_one, 1);
+        let entity_zero = world.summon();
+        let entity_one = world.summon();
+        assert_eq!(entity_zero.id, 0);
+        assert_eq!(entity_one.id, 1);
     }
 
     #[test]
     fn check_spawned_entity_has_transform() {
         let mut world = World::new();
-        let entity = world.spawn();
+        let entity = world.summon();
         let sparse_set = world
             .sparse_set_storage
             .get(&TypeId::of::<Transform>())
@@ -150,13 +170,13 @@ mod tests {
             .downcast_ref::<SparseSet<Transform>>()
             .unwrap();
 
-        assert_eq!(sparse_set.get(entity).is_some(), true);
+        assert_eq!(sparse_set.get(entity.id).is_some(), true);
     }
 
     #[test]
     fn check_add_component() {
         let mut world = World::new();
-        let entity = world.spawn();
+        let entity = world.summon();
         world.add_component(entity, Transform::default());
         let transform = world.get_component::<Transform>(entity).unwrap();
         assert_eq!(transform.position, Vec3::ZERO);
@@ -165,7 +185,7 @@ mod tests {
     #[test]
     fn check_get_component() {
         let mut world = World::new();
-        let entity = world.spawn();
+        let entity = world.summon();
         world.add_component(entity, Transform::default());
         let transform = world.get_component::<Transform>(entity).unwrap();
         assert_eq!(transform.position, Vec3::ZERO);
@@ -174,7 +194,7 @@ mod tests {
     #[test]
     fn check_get_component_mut() {
         let mut world = World::new();
-        let entity = world.spawn();
+        let entity = world.summon();
         world.add_component(entity, Transform::default());
         let transform = world.get_component_mut::<Transform>(entity).unwrap();
         transform.position = Vec3 {
@@ -193,10 +213,26 @@ mod tests {
     #[test]
     fn check_remove_component() {
         let mut world = World::new();
-        let entity = world.spawn();
+        let entity = world.summon();
         world.add_component(entity, Transform::default());
         assert_eq!(world.get_component::<Transform>(entity).is_some(), true);
         world.remove_component::<Transform>(entity);
         assert_eq!(world.get_component::<Transform>(entity).is_none(), true);
+    }
+
+    #[test]
+    fn check_generations() {
+        let mut world = World::new();
+        let entity_one = world.summon();
+        let entity_two = world.summon();
+        //self owned data
+        let entity_vec = vec![entity_one.clone(), entity_two.clone()];
+        world.destroy(entity_two);
+        // Check return none
+        assert_eq!(world.get_component::<Transform>(entity_two), None);
+        // Check stored return none
+        assert_eq!(world.get_component::<Transform>(entity_vec[1]), None);
+        // Check generations is as long as all max ids
+        assert_eq!(world.generations.len(), 2);
     }
 }

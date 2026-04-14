@@ -1,6 +1,9 @@
 pub mod component;
 pub use component::Component;
 
+pub mod entity;
+pub use entity::Entity;
+
 pub mod components;
 
 pub mod sparse_set;
