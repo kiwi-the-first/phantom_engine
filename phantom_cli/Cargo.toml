@@ -4,7 +4,9 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+phantom_project = { path = "../phantom_project"}
 clap = { version = "4.6.0", features = ["derive"] }
+anyhow = "1.0.102"
 
 [[bin]]
 name = "phantom"

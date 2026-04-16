@@ -12,10 +12,17 @@ pub struct Cli {
 pub enum Commands {
     /// Create a new project
     Create(CreateArgs),
+    Edit(EditArgs),
 }
 
 #[derive(Args)]
 pub struct CreateArgs {
     /// Name of project
     pub name: String,
+}
+
+#[derive(Args)]
+pub struct EditArgs {
+    /// Name of project
+    pub path: String,
 }
