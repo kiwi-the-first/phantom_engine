@@ -1,3 +1,6 @@
-fn main() {
-    println!("Hello, world!");
+use anyhow::Result;
+use phantom_runtime::{self, App};
+fn main() -> Result<()> {
+    App::run()?;
+    Ok(())
 }

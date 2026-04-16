@@ -4,3 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+phantom_runtime = { path = "../phantom_runtime"}
+anyhow = "1.0.102"

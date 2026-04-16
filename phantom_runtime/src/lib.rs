@@ -1,4 +1,6 @@
-mod app;
+pub mod app;
+pub use app::App;
+mod renderer;
 
 // use crate::app::App;
 
