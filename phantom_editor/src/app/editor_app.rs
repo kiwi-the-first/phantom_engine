@@ -1,5 +1,7 @@
 use std::sync::Arc;
 
+use egui_wgpu::ScreenDescriptor;
+use egui_wgpu::wgpu;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -10,9 +12,12 @@ use log::*;
 
 use phantom_runtime::renderer::state::State;
 
-#[derive(Default)]
+use crate::egui::egui_renderer::EguiRenderer;
+
 pub struct EditorApp {
     state: Option<State>,
+    egui_renderer: Option<EguiRenderer>,
+    scale_factor: f32,
 }
 
 impl ApplicationHandler<State> for EditorApp {
@@ -20,7 +25,13 @@ impl ApplicationHandler<State> for EditorApp {
         let window_attributes = Window::default_attributes();
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
 
-        self.state = Some(pollster::block_on(State::new(window)).unwrap());
+        let state = pollster::block_on(State::new(window.clone())).unwrap();
+
+        let egui_renderer =
+            EguiRenderer::new(&window, &state.device, state.surface_format(), None, 1);
+
+        self.state = Some(state);
+        self.egui_renderer = Some(egui_renderer);
     }
     #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
@@ -65,25 +76,21 @@ impl ApplicationHandler<State> for EditorApp {
         }
     }
 
-    fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let state = match &mut self.state {
-            Some(state) => state,
-            None => return,
-        };
-        match state.render() {
-            Ok(_) => {}
-            Err(e) => {
-                // Log the error and exit gracefully
-                log::error!("{e}");
-                event_loop.exit();
-            }
+    fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
+        if self.state.is_none() {
+            return;
         }
+        self.handle_redraw();
     }
 }
 
 impl EditorApp {
     pub fn new() -> Self {
-        Self { state: None }
+        Self {
+            state: None,
+            egui_renderer: None,
+            scale_factor: 1.0,
+        }
     }
 
     pub fn run() -> anyhow::Result<()> {
@@ -95,5 +102,82 @@ impl EditorApp {
         event_loop.run_app(&mut app)?;
 
         Ok(())
+    }
+
+    fn handle_redraw(&mut self) {
+        let state = self.state.as_mut().unwrap();
+
+        // Attempt to handle minimizing window
+
+        if let Some(min) = state.window.is_minimized() {
+            if min {
+                println!("Window is minimized");
+                return;
+            }
+        }
+
+        let screen_descriptor = ScreenDescriptor {
+            size_in_pixels: [state.config.width, state.config.height],
+            pixels_per_point: state.window.as_ref().scale_factor() as f32 * self.scale_factor,
+        };
+
+        let output = match state.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture, // Use it but should reconfigure
+            _ => {
+                log::warn!("Surface error, skipping frame");
+                return;
+            }
+        };
+
+        let surface_view = output.texture.create_view(&Default::default());
+
+        let mut encoder = state.device.create_command_encoder(&Default::default());
+
+        let window = state.window.as_ref();
+
+        {
+            let egui_renderer = self.egui_renderer.as_mut().unwrap();
+
+            egui_renderer.begin_frame(window);
+
+            egui::Window::new("winit + egui + wgpu says hello!")
+                .resizable(true)
+                .vscroll(true)
+                .default_open(false)
+                .show(egui_renderer.context(), |ui| {
+                    ui.label("Label!");
+
+                    if ui.button("Button!").clicked() {
+                        println!("boom!")
+                    }
+
+                    ui.separator();
+                    ui.horizontal(|ui| {
+                        ui.label(format!(
+                            "Pixels per point: {}",
+                            egui_renderer.context().pixels_per_point()
+                        ));
+                        if ui.button("-").clicked() {
+                            self.scale_factor = (self.scale_factor - 0.1).max(0.3);
+                        }
+                        if ui.button("+").clicked() {
+                            self.scale_factor = (self.scale_factor + 0.1).min(3.0);
+                        }
+                    });
+                });
+
+            self.egui_renderer.as_mut().unwrap().end_frame_and_draw(
+                &state.device,
+                &state.queue,
+                &mut encoder,
+                window,
+                &surface_view,
+                screen_descriptor,
+            );
+        }
+
+        state.queue.submit(Some(encoder.finish()));
+        output.present();
     }
 }

@@ -1,6 +1,6 @@
 pub mod app;
 pub use app::App;
-mod renderer;
+pub mod renderer;
 
 // use crate::app::App;
 

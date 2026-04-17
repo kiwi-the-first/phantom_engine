@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use anyhow::Result;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -8,11 +9,13 @@ use winit::window::{Window, WindowId};
 
 use log::*;
 
+use crate::renderer::scene_renderer::SceneRenderer;
 use crate::renderer::state::State;
 
 #[derive(Default)]
 pub struct App {
     state: Option<State>,
+    scene_renderer: Option<SceneRenderer>,
 }
 
 impl ApplicationHandler<State> for App {
@@ -21,6 +24,10 @@ impl ApplicationHandler<State> for App {
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
 
         self.state = Some(pollster::block_on(State::new(window)).unwrap());
+        self.scene_renderer = Some(SceneRenderer::new(
+            &self.state.as_ref().unwrap().device,
+            self.state.as_ref().unwrap().surface_format(),
+        ))
     }
     #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
@@ -66,24 +73,40 @@ impl ApplicationHandler<State> for App {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let state = match &mut self.state {
-            Some(state) => state,
-            None => return,
-        };
-        match state.render() {
-            Ok(_) => {}
-            Err(e) => {
-                // Log the error and exit gracefully
-                log::error!("{e}");
-                event_loop.exit();
+        let state = self.state.as_mut().unwrap();
+        let scene_renderer = self.scene_renderer.as_mut().unwrap();
+
+        let output = match state.surface.get_current_texture() {
+            wgpu::CurrentSurfaceTexture::Success(texture) => texture,
+            wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture, // Use it but should reconfigure
+            _ => {
+                log::warn!("Surface error, skipping frame");
+                return;
             }
-        }
+        };
+
+        let view = output
+            .texture
+            .create_view(&wgpu::TextureViewDescriptor::default());
+
+        let mut encoder = state
+            .device
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("Render Encoder"),
+            });
+
+        scene_renderer.render(&mut encoder, &view);
+        state.queue.submit(std::iter::once(encoder.finish()));
+        output.present();
     }
 }
 
 impl App {
     pub fn new() -> Self {
-        Self { state: None }
+        Self {
+            state: None,
+            scene_renderer: None,
+        }
     }
 
     pub fn run() -> anyhow::Result<()> {
