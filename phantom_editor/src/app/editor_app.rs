@@ -4,6 +4,7 @@ use egui_wgpu::ScreenDescriptor;
 use egui_wgpu::wgpu;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
+use winit::event_loop::ControlFlow;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
 use winit::window::{Window, WindowId};
@@ -18,6 +19,7 @@ pub struct EditorApp {
     state: Option<State>,
     egui_renderer: Option<EguiRenderer>,
     scale_factor: f32,
+    is_closing: bool,
 }
 
 impl ApplicationHandler<State> for EditorApp {
@@ -39,9 +41,23 @@ impl ApplicationHandler<State> for EditorApp {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        event_loop.set_control_flow(ControlFlow::Poll);
+
+        if let Some(egui_renderer) = &mut self.egui_renderer {
+            if let Some(state) = &self.state {
+                egui_renderer.handle_input(&state.window, &event);
+            }
+        }
+
         match event {
             WindowEvent::CloseRequested => {
                 info!("The close button was pressed; stopping");
+                self.is_closing = true;
+
+                drop(self.egui_renderer.take());
+                // Give threads time to cleanup
+                std::thread::sleep(std::time::Duration::from_millis(50));
+
                 event_loop.exit();
             }
             WindowEvent::RedrawRequested => {
@@ -77,8 +93,9 @@ impl ApplicationHandler<State> for EditorApp {
     }
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
-        if self.state.is_none() {
-            return;
+        if self.state.is_none() || self.is_closing {
+            // ← CHECK FLAG
+            return; // Don't render if closing!
         }
         self.handle_redraw();
     }
@@ -90,6 +107,7 @@ impl EditorApp {
             state: None,
             egui_renderer: None,
             scale_factor: 1.0,
+            is_closing: false,
         }
     }
 
@@ -97,7 +115,6 @@ impl EditorApp {
         env_logger::init();
 
         let event_loop = EventLoop::with_user_event().build()?;
-
         let mut app = EditorApp::new();
         event_loop.run_app(&mut app)?;
 
