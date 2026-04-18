@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use egui_dock::DockState;
 use egui_wgpu::ScreenDescriptor;
 use egui_wgpu::wgpu;
 use winit::application::ApplicationHandler;
@@ -13,6 +14,9 @@ use log::*;
 
 use phantom_runtime::renderer::state::State;
 
+use crate::app::tab_viewer;
+use crate::app::tab_viewer::EditorTabViewer;
+use crate::app::tab_viewer::Tab;
 use crate::egui::egui_renderer::EguiRenderer;
 
 pub struct EditorApp {
@@ -20,6 +24,7 @@ pub struct EditorApp {
     egui_renderer: Option<EguiRenderer>,
     scale_factor: f32,
     is_closing: bool,
+    dock_state: DockState<Tab>,
 }
 
 impl ApplicationHandler<State> for EditorApp {
@@ -50,6 +55,11 @@ impl ApplicationHandler<State> for EditorApp {
         }
 
         match event {
+            WindowEvent::Resized(physical_size) => {
+                if let Some(state) = &mut self.state {
+                    state.resize(physical_size.width, physical_size.height);
+                }
+            }
             WindowEvent::CloseRequested => {
                 info!("The close button was pressed; stopping");
                 self.is_closing = true;
@@ -103,11 +113,17 @@ impl ApplicationHandler<State> for EditorApp {
 
 impl EditorApp {
     pub fn new() -> Self {
+        let tabs = ["tab1", "tab2", "tab3"]
+            .map(str::to_string)
+            .into_iter()
+            .collect();
+        let dock_state = DockState::new(tabs);
         Self {
             state: None,
             egui_renderer: None,
             scale_factor: 1.0,
             is_closing: false,
+            dock_state: dock_state,
         }
     }
 
@@ -157,32 +173,18 @@ impl EditorApp {
             let egui_renderer = self.egui_renderer.as_mut().unwrap();
 
             egui_renderer.begin_frame(window);
+            let ctx = egui_renderer.context();
+            let screen_rect = ctx.viewport_rect();
 
-            egui::Window::new("winit + egui + wgpu says hello!")
-                .resizable(true)
-                .vscroll(true)
-                .default_open(false)
-                .show(egui_renderer.context(), |ui| {
-                    ui.label("Label!");
+            egui::Area::new("main_dock_area".into()).show(ctx, |ui| {
+                ui.set_max_size(screen_rect.size());
 
-                    if ui.button("Button!").clicked() {
-                        println!("boom!")
-                    }
-
-                    ui.separator();
-                    ui.horizontal(|ui| {
-                        ui.label(format!(
-                            "Pixels per point: {}",
-                            egui_renderer.context().pixels_per_point()
-                        ));
-                        if ui.button("-").clicked() {
-                            self.scale_factor = (self.scale_factor - 0.1).max(0.3);
-                        }
-                        if ui.button("+").clicked() {
-                            self.scale_factor = (self.scale_factor + 0.1).min(3.0);
-                        }
-                    });
-                });
+                egui_dock::DockArea::new(&mut self.dock_state)
+                    .show_leaf_collapse_buttons(false)
+                    .show_leaf_close_all_buttons(false)
+                    .style(egui_dock::Style::from_egui(ui.style().as_ref()))
+                    .show_inside(ui, &mut EditorTabViewer {});
+            });
 
             self.egui_renderer.as_mut().unwrap().end_frame_and_draw(
                 &state.device,
