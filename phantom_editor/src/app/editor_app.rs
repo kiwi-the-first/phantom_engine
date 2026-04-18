@@ -14,10 +14,10 @@ use log::*;
 
 use phantom_runtime::renderer::state::State;
 
-use crate::app::tab_viewer;
 use crate::app::tab_viewer::EditorTabViewer;
 use crate::app::tab_viewer::Tab;
 use crate::egui::egui_renderer::EguiRenderer;
+use crate::panels::Panels;
 
 pub struct EditorApp {
     state: Option<State>,
@@ -25,6 +25,7 @@ pub struct EditorApp {
     scale_factor: f32,
     is_closing: bool,
     dock_state: DockState<Tab>,
+    editor_tab_viewer: EditorTabViewer,
 }
 
 impl ApplicationHandler<State> for EditorApp {
@@ -113,10 +114,15 @@ impl ApplicationHandler<State> for EditorApp {
 
 impl EditorApp {
     pub fn new() -> Self {
-        let tabs = ["tab1", "tab2", "tab3"]
-            .map(str::to_string)
-            .into_iter()
-            .collect();
+        let tabs = vec![
+            Panels::Console,
+            Panels::Viewport,
+            Panels::Hierarchy,
+            Panels::Inspector,
+            Panels::AssetBrowser,
+        ]
+        .into_iter()
+        .collect();
         let dock_state = DockState::new(tabs);
         Self {
             state: None,
@@ -124,6 +130,7 @@ impl EditorApp {
             scale_factor: 1.0,
             is_closing: false,
             dock_state: dock_state,
+            editor_tab_viewer: EditorTabViewer::new(),
         }
     }
 
@@ -179,11 +186,22 @@ impl EditorApp {
             egui::Area::new("main_dock_area".into()).show(ctx, |ui| {
                 ui.set_max_size(screen_rect.size());
 
+                egui::Panel::top("menu_bar").show_inside(ui, |ui| {
+                    egui::MenuBar::new().ui(ui, |ui| {
+                        ui.menu_button("File", |ui| {});
+                        ui.menu_button("Edit", |ui| {});
+                        ui.menu_button("Tools", |ui| {});
+                        ui.menu_button("Help", |ui| {});
+                        ui.menu_button("Editor", |ui| {});
+                    });
+                });
+
                 egui_dock::DockArea::new(&mut self.dock_state)
                     .show_leaf_collapse_buttons(false)
                     .show_leaf_close_all_buttons(false)
+                    .show_close_buttons(false)
                     .style(egui_dock::Style::from_egui(ui.style().as_ref()))
-                    .show_inside(ui, &mut EditorTabViewer {});
+                    .show_inside(ui, &mut self.editor_tab_viewer);
             });
 
             self.egui_renderer.as_mut().unwrap().end_frame_and_draw(

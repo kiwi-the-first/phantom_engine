@@ -1,14 +1,14 @@
 use egui::Ui;
 
-pub struct ConsolePanel {}
+pub struct HierarchyPanel {}
 
-impl ConsolePanel {
+impl HierarchyPanel {
     pub fn new() -> Self {
         Self {}
     }
 
     pub fn show(&mut self, ui: &mut Ui) {
-        ui.label("Console logs will appear here");
+        ui.label("Hierarchy will appear here");
         ui.separator();
     }
 }

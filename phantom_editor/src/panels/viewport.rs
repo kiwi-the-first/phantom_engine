@@ -1,14 +1,14 @@
 use egui::Ui;
 
-pub struct ConsolePanel {}
+pub struct ViewportPanel {}
 
-impl ConsolePanel {
+impl ViewportPanel {
     pub fn new() -> Self {
         Self {}
     }
 
     pub fn show(&mut self, ui: &mut Ui) {
-        ui.label("Console logs will appear here");
+        ui.label("Viewport will appear here");
         ui.separator();
     }
 }
