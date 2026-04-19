@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use egui_dock::DockState;
@@ -14,18 +15,22 @@ use log::*;
 
 use phantom_runtime::renderer::state::State;
 
-use crate::app::tab_viewer::EditorTabViewer;
-use crate::app::tab_viewer::Tab;
 use crate::egui::egui_renderer::EguiRenderer;
+use crate::menus::view::ViewMenu;
 use crate::panels::Panels;
+use crate::workspaces::Workspace;
+use crate::workspaces::WorkspaceConfig;
+use crate::workspaces::WorkspaceKind;
+use crate::workspaces::WorkspaceViewer;
 
 pub struct EditorApp {
     state: Option<State>,
     egui_renderer: Option<EguiRenderer>,
     scale_factor: f32,
     is_closing: bool,
-    dock_state: DockState<Tab>,
-    editor_tab_viewer: EditorTabViewer,
+    avalible_workspaces: HashMap<String, WorkspaceConfig>,
+    dock_state: DockState<Workspace>,
+    workspace_viewer: WorkspaceViewer,
 }
 
 impl ApplicationHandler<State> for EditorApp {
@@ -114,23 +119,44 @@ impl ApplicationHandler<State> for EditorApp {
 
 impl EditorApp {
     pub fn new() -> Self {
-        let tabs = vec![
-            Panels::Console,
-            Panels::Viewport,
-            Panels::Hierarchy,
-            Panels::Inspector,
-            Panels::AssetBrowser,
-        ]
-        .into_iter()
-        .collect();
-        let dock_state = DockState::new(tabs);
+        let mut available_workspaces = HashMap::new();
+
+        available_workspaces.insert(
+            "Level Editor".to_string(),
+            WorkspaceConfig {
+                name: "Level Editor".to_string(),
+                kind: WorkspaceKind::BuiltIn,
+                panels: vec![
+                    Panels::Viewport,
+                    Panels::Hierarchy,
+                    Panels::Inspector,
+                    Panels::Console,
+                    Panels::AssetBrowser,
+                ],
+            },
+        );
+
+        let level_editor = Workspace::new(
+            "Level Editor".to_string(),
+            vec![
+                Panels::Viewport,
+                Panels::Hierarchy,
+                Panels::Inspector,
+                Panels::Console,
+                Panels::AssetBrowser,
+            ],
+        );
+
+        let default_open_workspaces = vec![level_editor];
+        let dock_state = DockState::new(default_open_workspaces);
         Self {
             state: None,
             egui_renderer: None,
             scale_factor: 1.0,
             is_closing: false,
             dock_state: dock_state,
-            editor_tab_viewer: EditorTabViewer::new(),
+            avalible_workspaces: available_workspaces,
+            workspace_viewer: WorkspaceViewer::new(),
         }
     }
 
@@ -142,6 +168,12 @@ impl EditorApp {
         event_loop.run_app(&mut app)?;
 
         Ok(())
+    }
+    pub fn open_workspaces(&mut self, name: &str) {
+        if let Some(config) = self.avalible_workspaces.get(name) {
+            let workspace = Workspace::new(config.name.clone(), config.panels.clone());
+            self.dock_state.push_to_first_leaf(workspace);
+        }
     }
 
     fn handle_redraw(&mut self) {
@@ -175,6 +207,7 @@ impl EditorApp {
         let mut encoder = state.device.create_command_encoder(&Default::default());
 
         let window = state.window.as_ref();
+        let mut workspace_action = None;
 
         {
             let egui_renderer = self.egui_renderer.as_mut().unwrap();
@@ -182,6 +215,8 @@ impl EditorApp {
             egui_renderer.begin_frame(window);
             let ctx = egui_renderer.context();
             let screen_rect = ctx.viewport_rect();
+            let show_close = self.dock_state.iter_all_tabs().count() > 1;
+            //DRAW HERE
 
             egui::Area::new("main_dock_area".into()).show(ctx, |ui| {
                 ui.set_max_size(screen_rect.size());
@@ -191,6 +226,9 @@ impl EditorApp {
                         ui.menu_button("File", |ui| {});
                         ui.menu_button("Edit", |ui| {});
                         ui.menu_button("Tools", |ui| {});
+                        ui.menu_button("View", |ui| {
+                            workspace_action = ViewMenu::show(ui, &self.avalible_workspaces);
+                        });
                         ui.menu_button("Help", |ui| {});
                         ui.menu_button("Editor", |ui| {});
                     });
@@ -199,11 +237,13 @@ impl EditorApp {
                 egui_dock::DockArea::new(&mut self.dock_state)
                     .show_leaf_collapse_buttons(false)
                     .show_leaf_close_all_buttons(false)
-                    .show_close_buttons(false)
+                    .show_close_buttons(show_close)
+                    .draggable_tabs(false)
                     .style(egui_dock::Style::from_egui(ui.style().as_ref()))
-                    .show_inside(ui, &mut self.editor_tab_viewer);
+                    .show_inside(ui, &mut self.workspace_viewer);
             });
 
+            //END DRAW
             self.egui_renderer.as_mut().unwrap().end_frame_and_draw(
                 &state.device,
                 &state.queue,
@@ -216,5 +256,9 @@ impl EditorApp {
 
         state.queue.submit(Some(encoder.finish()));
         output.present();
+
+        if let Some(name) = workspace_action {
+            self.open_workspaces(&name);
+        }
     }
 }

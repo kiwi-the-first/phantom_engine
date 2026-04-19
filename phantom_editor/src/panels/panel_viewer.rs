@@ -5,7 +5,7 @@ use crate::panels::{
 use egui::{Ui, WidgetText};
 use egui_dock::TabViewer;
 
-pub struct EditorTabViewer {
+pub struct PanelViewer {
     console: ConsolePanel,
     viewport: ViewportPanel,
     hierarchy: HierarchyPanel,
@@ -13,7 +13,7 @@ pub struct EditorTabViewer {
     asset_browser: AssetBrowserPanel,
 }
 
-impl EditorTabViewer {
+impl PanelViewer {
     pub fn new() -> Self {
         Self {
             console: ConsolePanel::new(),
@@ -24,7 +24,7 @@ impl EditorTabViewer {
         }
     }
 }
-impl TabViewer for EditorTabViewer {
+impl TabViewer for PanelViewer {
     type Tab = Tab;
     // Returns the current `tab`'s title.
     fn title(&mut self, tab: &mut Self::Tab) -> WidgetText {

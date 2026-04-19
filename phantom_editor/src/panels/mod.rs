@@ -1,6 +1,9 @@
 pub mod panels;
 pub use panels::Panels;
 
+pub mod panel_viewer;
+pub use panel_viewer::PanelViewer;
+
 pub mod console;
 pub use console::ConsolePanel;
 
