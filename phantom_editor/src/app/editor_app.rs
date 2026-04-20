@@ -3,6 +3,11 @@ use std::sync::Arc;
 
 use egui::include_image;
 use egui_dock::DockState;
+use egui_dock::NodeIndex;
+use egui_dock::NodePath;
+use egui_dock::SurfaceIndex;
+use egui_dock::TabIndex;
+use egui_dock::TabPath;
 use egui_dock::dock_state;
 use egui_wgpu::ScreenDescriptor;
 use egui_wgpu::wgpu;
@@ -23,6 +28,7 @@ use crate::menus::view::ViewMenuAction;
 use crate::panels::Panels;
 use crate::persitance;
 use crate::persitance::layout;
+use crate::workspaces::BuiltInWorkspace;
 use crate::workspaces::Workspace;
 use crate::workspaces::WorkspaceConfig;
 use crate::workspaces::WorkspaceKind;
@@ -137,7 +143,7 @@ impl EditorApp {
             "Level Editor".to_string(),
             WorkspaceConfig {
                 name: "Level Editor".to_string(),
-                kind: WorkspaceKind::BuiltIn,
+                kind: WorkspaceKind::BuiltIn(BuiltInWorkspace::LevelEditor),
                 panels: vec![
                     Panels::Viewport,
                     Panels::Hierarchy,
@@ -161,8 +167,11 @@ impl EditorApp {
         if let Some(layout) = layout::load("Level Editor".to_string()).ok() {
             level_editor.panel_dock_state = layout;
         }
+
         let default_open_workspaces = vec![level_editor];
-        let dock_state = DockState::new(default_open_workspaces);
+        let mut dock_state = DockState::new(default_open_workspaces);
+        // Set active tab to first tab
+        dock_state.set_focused_node_and_surface(NodePath::new(SurfaceIndex(0), NodeIndex(0)));
         Self {
             state: None,
             egui_renderer: None,
@@ -183,6 +192,7 @@ impl EditorApp {
 
         Ok(())
     }
+
     pub fn open_workspaces(&mut self, name: &str) {
         if let Some(config) = self.avalible_workspaces.get(name) {
             let workspace = Workspace::new(config.name.clone(), config.panels.clone());
@@ -221,9 +231,20 @@ impl EditorApp {
         let mut encoder = state.device.create_command_encoder(&Default::default());
 
         let window = state.window.as_ref();
-        let mut workspace_action = None;
+        let mut view_menu_action = None;
 
         {
+            let active_workspace_kind = self
+                .avalible_workspaces
+                .get(&self.dock_state.find_active_focused().unwrap().1.name)
+                .unwrap()
+                .kind;
+            let active_workspace_type = match active_workspace_kind {
+                WorkspaceKind::BuiltIn(workspace_type) => Some(workspace_type),
+                WorkspaceKind::Custom => None,
+            };
+
+            let show_close = self.dock_state.iter_all_tabs().count() > 1;
             let egui_renderer = self.egui_renderer.as_mut().unwrap();
 
             egui_renderer.begin_frame(window);
@@ -234,7 +255,6 @@ impl EditorApp {
             visuals.panel_fill = black.clone();
 
             let screen_rect = ctx.viewport_rect();
-            let show_close = self.dock_state.iter_all_tabs().count() > 1;
 
             ctx.set_visuals(visuals);
             //DRAW HERE
@@ -258,8 +278,17 @@ impl EditorApp {
                                     ui.menu_button("Edit", |ui| {});
                                     ui.menu_button("Tools", |ui| {});
                                     ui.menu_button("View", |ui| {
-                                        workspace_action =
-                                            ViewMenu::show(ui, &self.avalible_workspaces);
+                                        view_menu_action = ViewMenu::show(
+                                            ui,
+                                            &self.avalible_workspaces,
+                                            self.dock_state
+                                                .find_active_focused()
+                                                .unwrap()
+                                                .1
+                                                .name
+                                                .clone(),
+                                            active_workspace_type,
+                                        );
                                     });
                                     ui.menu_button("Help", |ui| {});
                                     ui.menu_button("Editor", |ui| {});
@@ -292,7 +321,7 @@ impl EditorApp {
         state.queue.submit(Some(encoder.finish()));
         output.present();
 
-        match workspace_action {
+        match view_menu_action {
             Some(ViewMenuAction::OpenWorkspace(name)) => {
                 self.open_workspaces(&name);
             }
@@ -300,7 +329,23 @@ impl EditorApp {
                 let workspace = self.dock_state.find_active_focused().unwrap();
                 let name = workspace.1.name.clone();
                 let dock_state = workspace.1.panel_dock_state.clone();
-                persitance::layout::save(name, &dock_state).expect("failed to save");
+                layout::save(name, &dock_state).expect("failed to save");
+            }
+            Some(ViewMenuAction::LoadCustomLayout(name)) => {
+                let layout = layout::load(name).unwrap();
+                self.dock_state
+                    .find_active_focused()
+                    .unwrap()
+                    .1
+                    .panel_dock_state = layout;
+            }
+            Some(ViewMenuAction::LoadDefaultLayout(workspace_type)) => {
+                let layout = layout::load_default(workspace_type).unwrap();
+                self.dock_state
+                    .find_active_focused()
+                    .unwrap()
+                    .1
+                    .panel_dock_state = layout;
             }
             None => {}
         }

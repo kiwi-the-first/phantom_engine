@@ -1,6 +1,9 @@
 pub mod workspace;
 pub use workspace::Workspace;
 
+pub mod builtin_workspaces;
+pub use builtin_workspaces::BuiltInWorkspace;
+
 pub mod workspace_config;
 pub use workspace_config::WorkspaceConfig;
 
