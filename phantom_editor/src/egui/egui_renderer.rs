@@ -25,6 +25,8 @@ impl EguiRenderer {
     ) -> Self {
         let egui_context = Context::default();
 
+        egui_extras::install_image_loaders(&egui_context);
+
         let egui_state = egui_winit::State::new(
             egui_context,
             egui::ViewportId::ROOT,

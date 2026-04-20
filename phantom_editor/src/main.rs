@@ -4,6 +4,7 @@ pub mod app;
 pub mod egui;
 pub mod menus;
 pub mod panels;
+pub mod persitance;
 pub mod workspaces;
 
 fn main() {

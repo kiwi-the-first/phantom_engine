@@ -1,7 +1,9 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use egui::include_image;
 use egui_dock::DockState;
+use egui_dock::dock_state;
 use egui_wgpu::ScreenDescriptor;
 use egui_wgpu::wgpu;
 use winit::application::ApplicationHandler;
@@ -17,7 +19,10 @@ use phantom_runtime::renderer::state::State;
 
 use crate::egui::egui_renderer::EguiRenderer;
 use crate::menus::view::ViewMenu;
+use crate::menus::view::ViewMenuAction;
 use crate::panels::Panels;
+use crate::persitance;
+use crate::persitance::layout;
 use crate::workspaces::Workspace;
 use crate::workspaces::WorkspaceConfig;
 use crate::workspaces::WorkspaceKind;
@@ -35,7 +40,14 @@ pub struct EditorApp {
 
 impl ApplicationHandler<State> for EditorApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        let window_attributes = Window::default_attributes();
+        let icon_bytes = include_bytes!("../images/phantom_engine_icon_256.png");
+        let icon_image = image::load_from_memory(icon_bytes).unwrap().to_rgba8();
+        let (width, height) = icon_image.dimensions();
+        let icon = winit::window::Icon::from_rgba(icon_image.into_raw(), width, height).unwrap();
+
+        let window_attributes = Window::default_attributes()
+            .with_title("Phantom Engine")
+            .with_window_icon(Some(icon));
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
 
         let state = pollster::block_on(State::new(window.clone())).unwrap();
@@ -136,7 +148,7 @@ impl EditorApp {
             },
         );
 
-        let level_editor = Workspace::new(
+        let mut level_editor = Workspace::new(
             "Level Editor".to_string(),
             vec![
                 Panels::Viewport,
@@ -146,7 +158,9 @@ impl EditorApp {
                 Panels::AssetBrowser,
             ],
         );
-
+        if let Some(layout) = layout::load("Level Editor".to_string()).ok() {
+            level_editor.panel_dock_state = layout;
+        }
         let default_open_workspaces = vec![level_editor];
         let dock_state = DockState::new(default_open_workspaces);
         Self {
@@ -214,33 +228,54 @@ impl EditorApp {
 
             egui_renderer.begin_frame(window);
             let ctx = egui_renderer.context();
+            let mut visuals = ctx.style().visuals.clone();
+            let black = egui::Color32::from_rgb(10, 10, 10);
+            visuals.window_fill = black.clone();
+            visuals.panel_fill = black.clone();
+
             let screen_rect = ctx.viewport_rect();
             let show_close = self.dock_state.iter_all_tabs().count() > 1;
+
+            ctx.set_visuals(visuals);
             //DRAW HERE
 
             egui::Area::new("main_dock_area".into()).show(ctx, |ui| {
                 ui.set_max_size(screen_rect.size());
 
-                egui::Panel::top("menu_bar").show_inside(ui, |ui| {
-                    egui::MenuBar::new().ui(ui, |ui| {
-                        ui.menu_button("File", |ui| {});
-                        ui.menu_button("Edit", |ui| {});
-                        ui.menu_button("Tools", |ui| {});
-                        ui.menu_button("View", |ui| {
-                            workspace_action = ViewMenu::show(ui, &self.avalible_workspaces);
-                        });
-                        ui.menu_button("Help", |ui| {});
-                        ui.menu_button("Editor", |ui| {});
-                    });
-                });
+                ui.vertical(|ui| {
+                    egui::Panel::top("menu_bar").show_inside(ui, |ui| {
+                        ui.allocate_ui(egui::vec2(ui.available_width(), 0.0), |ui| {
+                            ui.horizontal_top(|ui| {
+                                ui.add(
+                                    egui::Image::new(include_image!(
+                                        "../images/phantom_engine_icon_glow_256.png"
+                                    ))
+                                    .fit_to_exact_size(egui::vec2(48.0, 48.0)),
+                                );
 
-                egui_dock::DockArea::new(&mut self.dock_state)
-                    .show_leaf_collapse_buttons(false)
-                    .show_leaf_close_all_buttons(false)
-                    .show_close_buttons(show_close)
-                    .draggable_tabs(false)
-                    .style(egui_dock::Style::from_egui(ui.style().as_ref()))
-                    .show_inside(ui, &mut self.workspace_viewer);
+                                egui::MenuBar::new().ui(ui, |ui| {
+                                    ui.menu_button("File", |ui| {});
+                                    ui.menu_button("Edit", |ui| {});
+                                    ui.menu_button("Tools", |ui| {});
+                                    ui.menu_button("View", |ui| {
+                                        workspace_action =
+                                            ViewMenu::show(ui, &self.avalible_workspaces);
+                                    });
+                                    ui.menu_button("Help", |ui| {});
+                                    ui.menu_button("Editor", |ui| {});
+                                });
+                            });
+                        });
+                    });
+
+                    egui_dock::DockArea::new(&mut self.dock_state)
+                        .show_leaf_collapse_buttons(false)
+                        .show_leaf_close_all_buttons(false)
+                        .show_close_buttons(show_close)
+                        .draggable_tabs(false)
+                        .style(egui_dock::Style::from_egui(ui.style().as_ref()))
+                        .show_inside(ui, &mut self.workspace_viewer);
+                });
             });
 
             //END DRAW
@@ -257,8 +292,17 @@ impl EditorApp {
         state.queue.submit(Some(encoder.finish()));
         output.present();
 
-        if let Some(name) = workspace_action {
-            self.open_workspaces(&name);
+        match workspace_action {
+            Some(ViewMenuAction::OpenWorkspace(name)) => {
+                self.open_workspaces(&name);
+            }
+            Some(ViewMenuAction::SaveLayout) => {
+                let workspace = self.dock_state.find_active_focused().unwrap();
+                let name = workspace.1.name.clone();
+                let dock_state = workspace.1.panel_dock_state.clone();
+                persitance::layout::save(name, &dock_state).expect("failed to save");
+            }
+            None => {}
         }
     }
 }
