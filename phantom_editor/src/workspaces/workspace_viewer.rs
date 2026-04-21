@@ -1,6 +1,6 @@
 use crate::workspaces::Workspace;
 
-use egui::{Id, Ui, WidgetText};
+use egui::{Id, TextureId, Ui, WidgetText};
 use egui_dock::{DockArea, TabViewer};
 
 pub struct WorkspaceViewer {}

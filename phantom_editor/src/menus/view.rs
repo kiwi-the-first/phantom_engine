@@ -1,8 +1,11 @@
 use std::collections::HashMap;
 
-use egui::Ui;
+use egui::{Id, Ui};
 
-use crate::workspaces::{BuiltInWorkspace, WorkspaceConfig, workspace};
+use crate::{
+    render_resoruces::RenderReourceKey,
+    workspaces::{BuiltInWorkspace, Workspace, WorkspaceConfig, workspace},
+};
 
 pub enum ViewMenuAction {
     OpenWorkspace(String),
@@ -18,17 +21,31 @@ impl ViewMenu {
         Self {}
     }
 
-    pub fn show(
-        ui: &mut Ui,
-        avalible_workspaces: &HashMap<String, WorkspaceConfig>,
-        active_workspace_name: String,
-        active_workspace_type: Option<BuiltInWorkspace>,
-    ) -> Option<ViewMenuAction> {
+    pub fn show(ui: &mut Ui) -> Option<ViewMenuAction> {
         let mut view_action = None;
+        let available_workspaces = ui
+            .ctx()
+            .data(|r| r.get_temp::<Vec<String>>(Id::new(RenderReourceKey::AvailableWorkspaces)))
+            .unwrap();
+
+        let active_workspace_name = ui
+            .ctx()
+            .data(|r| r.get_temp::<String>(Id::new(RenderReourceKey::ActiveWorkspaceName)))
+            .unwrap();
+
+        let active_workspace_type = ui
+            .ctx()
+            .data(|r| {
+                r.get_temp::<Option<BuiltInWorkspace>>(Id::new(
+                    RenderReourceKey::ActiveWorkspaceBuiltInType,
+                ))
+            })
+            .unwrap();
+
         ui.menu_button("Workspaces", |ui| {
-            for (name, _) in avalible_workspaces {
-                if ui.button(name).clicked() {
-                    view_action = Some(ViewMenuAction::OpenWorkspace(name.clone()));
+            for name in available_workspaces {
+                if ui.button(&name).clicked() {
+                    view_action = Some(ViewMenuAction::OpenWorkspace(name));
                 }
             }
         });

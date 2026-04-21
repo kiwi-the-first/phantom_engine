@@ -1,16 +1,18 @@
 use std::collections::HashMap;
 use std::sync::Arc;
 
+use egui::Id;
+
 use egui::include_image;
 use egui_dock::DockState;
 use egui_dock::NodeIndex;
 use egui_dock::NodePath;
 use egui_dock::SurfaceIndex;
-use egui_dock::TabIndex;
-use egui_dock::TabPath;
-use egui_dock::dock_state;
 use egui_wgpu::ScreenDescriptor;
 use egui_wgpu::wgpu;
+use egui_wgpu::wgpu::TextureView;
+use egui_wgpu::wgpu::wgt::TextureViewDescriptor;
+use phantom_runtime::renderer::scene_renderer::SceneRenderer;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::ControlFlow;
@@ -26,8 +28,8 @@ use crate::egui::egui_renderer::EguiRenderer;
 use crate::menus::view::ViewMenu;
 use crate::menus::view::ViewMenuAction;
 use crate::panels::Panels;
-use crate::persitance;
 use crate::persitance::layout;
+use crate::render_resoruces::render_recource_keys::RenderReourceKey;
 use crate::workspaces::BuiltInWorkspace;
 use crate::workspaces::Workspace;
 use crate::workspaces::WorkspaceConfig;
@@ -42,10 +44,14 @@ pub struct EditorApp {
     avalible_workspaces: HashMap<String, WorkspaceConfig>,
     dock_state: DockState<Workspace>,
     workspace_viewer: WorkspaceViewer,
+    view_port_texture: Option<wgpu::Texture>,
+    scene_renderer: Option<SceneRenderer>,
+    viewport_view: Option<TextureView>,
 }
 
 impl ApplicationHandler<State> for EditorApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
+        // Create Window Icon
         let icon_bytes = include_bytes!("../images/phantom_engine_icon_256.png");
         let icon_image = image::load_from_memory(icon_bytes).unwrap().to_rgba8();
         let (width, height) = icon_image.dimensions();
@@ -63,6 +69,63 @@ impl ApplicationHandler<State> for EditorApp {
 
         self.state = Some(state);
         self.egui_renderer = Some(egui_renderer);
+
+        if self.state.is_some() {
+            let view_port_texture =
+                self.state
+                    .as_ref()
+                    .unwrap()
+                    .device
+                    .create_texture(&wgpu::TextureDescriptor {
+                        label: Some("viewport"),
+                        size: wgpu::Extent3d {
+                            width: 800,
+                            height: 600,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                            | wgpu::TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
+                    });
+            self.view_port_texture = Some(view_port_texture);
+
+            self.scene_renderer = Some(SceneRenderer::new(
+                &self.state.as_ref().unwrap().device,
+                wgpu::TextureFormat::Rgba8UnormSrgb,
+            ));
+
+            let viewport_view = self
+                .view_port_texture
+                .as_ref()
+                .unwrap()
+                .create_view(&Default::default());
+
+            let texture_id = self
+                .egui_renderer
+                .as_mut()
+                .unwrap()
+                .egui_renderer
+                .register_native_texture(
+                    &self.state.as_ref().unwrap().device,
+                    &viewport_view,
+                    wgpu::FilterMode::Linear,
+                );
+
+            // Send TextureId to ctx
+            self.egui_renderer
+                .as_mut()
+                .unwrap()
+                .context()
+                .data_mut(|d| {
+                    d.insert_temp(Id::new(RenderReourceKey::ViewportTexture), texture_id);
+                });
+
+            self.viewport_view = Some(viewport_view);
+        }
     }
     #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
@@ -131,7 +194,8 @@ impl ApplicationHandler<State> for EditorApp {
             // ← CHECK FLAG
             return; // Don't render if closing!
         }
-        self.handle_redraw();
+        self.prepare_ui_context();
+        self.handle_ui_redraw();
     }
 }
 
@@ -180,6 +244,9 @@ impl EditorApp {
             dock_state: dock_state,
             avalible_workspaces: available_workspaces,
             workspace_viewer: WorkspaceViewer::new(),
+            view_port_texture: None,
+            viewport_view: None,
+            scene_renderer: None,
         }
     }
 
@@ -200,11 +267,53 @@ impl EditorApp {
         }
     }
 
-    fn handle_redraw(&mut self) {
+    fn prepare_ui_context(&mut self) {
+        let active_workspace_name = self
+            .dock_state
+            .find_active_focused()
+            .unwrap()
+            .1
+            .name
+            .clone();
+
+        let active_builtin_workspace_type: Option<BuiltInWorkspace> = match self
+            .avalible_workspaces
+            .get(&active_workspace_name)
+            .unwrap()
+            .kind
+        {
+            WorkspaceKind::BuiltIn(wtype) => Some(wtype),
+            WorkspaceKind::Custom => None,
+        };
+
+        let available_workspaces: Vec<String> = self.avalible_workspaces.keys().cloned().collect();
+
+        // INSERT RESOURCES TO BE USED BY EGUI PANELS AND MENUS
+        self.egui_renderer
+            .as_mut()
+            .unwrap()
+            .context()
+            .data_mut(|w| {
+                w.insert_temp(
+                    Id::new(RenderReourceKey::ActiveWorkspaceName),
+                    active_workspace_name,
+                );
+                w.insert_temp(
+                    Id::new(RenderReourceKey::AvailableWorkspaces),
+                    available_workspaces,
+                );
+                w.insert_temp(
+                    Id::new(RenderReourceKey::ActiveWorkspaceBuiltInType),
+                    active_builtin_workspace_type,
+                )
+            });
+    }
+
+    fn handle_game_rendering(&mut self) {}
+    fn handle_ui_redraw(&mut self) {
         let state = self.state.as_mut().unwrap();
 
         // Attempt to handle minimizing window
-
         if let Some(min) = state.window.is_minimized() {
             if min {
                 println!("Window is minimized");
@@ -228,22 +337,27 @@ impl EditorApp {
 
         let surface_view = output.texture.create_view(&Default::default());
 
+        let viewport_render_view =
+            self.view_port_texture
+                .as_ref()
+                .unwrap()
+                .create_view(&TextureViewDescriptor {
+                    format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
+                    ..Default::default()
+                });
+
         let mut encoder = state.device.create_command_encoder(&Default::default());
+        self.scene_renderer
+            .as_mut()
+            .unwrap()
+            .render(&mut encoder, &viewport_render_view)
+            .expect("RENDERING FAILED"); // this a terrible way to handle this error but rn im lazy
 
         let window = state.window.as_ref();
+
         let mut view_menu_action = None;
 
         {
-            let active_workspace_kind = self
-                .avalible_workspaces
-                .get(&self.dock_state.find_active_focused().unwrap().1.name)
-                .unwrap()
-                .kind;
-            let active_workspace_type = match active_workspace_kind {
-                WorkspaceKind::BuiltIn(workspace_type) => Some(workspace_type),
-                WorkspaceKind::Custom => None,
-            };
-
             let show_close = self.dock_state.iter_all_tabs().count() > 1;
             let egui_renderer = self.egui_renderer.as_mut().unwrap();
 
@@ -278,17 +392,7 @@ impl EditorApp {
                                     ui.menu_button("Edit", |ui| {});
                                     ui.menu_button("Tools", |ui| {});
                                     ui.menu_button("View", |ui| {
-                                        view_menu_action = ViewMenu::show(
-                                            ui,
-                                            &self.avalible_workspaces,
-                                            self.dock_state
-                                                .find_active_focused()
-                                                .unwrap()
-                                                .1
-                                                .name
-                                                .clone(),
-                                            active_workspace_type,
-                                        );
+                                        view_menu_action = ViewMenu::show(ui)
                                     });
                                     ui.menu_button("Help", |ui| {});
                                     ui.menu_button("Editor", |ui| {});

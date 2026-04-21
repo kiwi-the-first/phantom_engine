@@ -1,4 +1,6 @@
-use egui::Ui;
+use egui::{Id, TextureId, Ui};
+
+use crate::render_resoruces::render_recource_keys::RenderReourceKey;
 
 pub struct ViewportPanel {}
 
@@ -8,7 +10,12 @@ impl ViewportPanel {
     }
 
     pub fn show(&mut self, ui: &mut Ui) {
-        ui.label("Viewport will appear here");
-        ui.separator();
+        if let Some(id) = ui
+            .ctx()
+            .data(|d| d.get_temp::<TextureId>(Id::new(RenderReourceKey::ViewportTexture)))
+        {
+            let size = ui.available_size();
+            ui.image(egui::load::SizedTexture::new(id, size));
+        }
     }
 }

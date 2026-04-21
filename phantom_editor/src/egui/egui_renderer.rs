@@ -11,7 +11,7 @@ use winit::{event::WindowEvent, window::Window};
 
 pub struct EguiRenderer {
     egui_state: State,
-    egui_renderer: Renderer,
+    pub egui_renderer: Renderer,
     frame_started: bool,
 }
 

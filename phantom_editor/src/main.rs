@@ -5,6 +5,7 @@ pub mod egui;
 pub mod menus;
 pub mod panels;
 pub mod persitance;
+pub mod render_resoruces;
 pub mod workspaces;
 
 fn main() {

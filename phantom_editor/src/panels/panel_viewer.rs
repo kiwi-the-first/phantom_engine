@@ -2,7 +2,7 @@ pub use crate::panels::Panels as Tab;
 use crate::panels::{
     AssetBrowserPanel, ConsolePanel, HierarchyPanel, InspectorPanel, ViewportPanel,
 };
-use egui::{Ui, WidgetText};
+use egui::{TextureId, Ui, WidgetText};
 use egui_dock::TabViewer;
 
 pub struct PanelViewer {
