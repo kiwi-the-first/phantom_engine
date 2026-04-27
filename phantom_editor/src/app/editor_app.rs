@@ -30,6 +30,8 @@ use log::*;
 use phantom_runtime::renderer::state::State;
 
 use crate::actions::Actions;
+use crate::context::EditorContext;
+use crate::context::editor_context;
 use crate::egui::egui_renderer::EguiRenderer;
 use crate::menus::view::ViewMenu;
 use crate::menus::view::ViewMenuAction;
@@ -53,6 +55,7 @@ pub struct EditorApp {
     view_port_texture: Option<wgpu::Texture>,
     scene_renderer: Option<SceneRenderer>,
     viewport_view: Option<TextureView>,
+    editor_context: Option<Arc<Mutex<EditorContext>>>,
 }
 
 impl ApplicationHandler<State> for EditorApp {
@@ -138,7 +141,10 @@ impl ApplicationHandler<State> for EditorApp {
                 .as_mut()
                 .unwrap()
                 .context()
-                .data_mut(|w| w.insert_temp(Id::new("Actions"), actions));
+                .data_mut(|w| {
+                    w.insert_temp(Id::new("Actions"), actions);
+                    w.insert_temp(Id::new("EditorCtx"), self.editor_context.take())
+                });
         }
     }
     #[allow(unused_mut)]
@@ -261,14 +267,16 @@ impl EditorApp {
             view_port_texture: None,
             viewport_view: None,
             scene_renderer: None,
+            editor_context: None,
         }
     }
 
-    pub fn run() -> anyhow::Result<()> {
+    pub fn run(editor_context: EditorContext) -> anyhow::Result<()> {
         env_logger::init();
 
         let event_loop = EventLoop::with_user_event().build()?;
         let mut app = EditorApp::new();
+        app.editor_context = Some(Arc::new(Mutex::new(editor_context)));
         event_loop.run_app(&mut app)?;
 
         Ok(())
@@ -388,7 +396,12 @@ impl EditorApp {
                     ctx.data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new("Actions")))
                 {
                     let mut actions = actions.lock().unwrap();
-                    actions.undo();
+                    actions.undo(
+                        &ctx.data_mut(|w| {
+                            w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new("EditorCtx"))
+                        })
+                        .unwrap(),
+                    );
                 }
             }
             if should_redo {
@@ -396,7 +409,12 @@ impl EditorApp {
                     ctx.data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new("Actions")))
                 {
                     let mut actions = actions.lock().unwrap();
-                    actions.redo();
+                    actions.redo(
+                        &ctx.data_mut(|w| {
+                            w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new("EditorCtx"))
+                        })
+                        .unwrap(),
+                    );
                 }
             }
 

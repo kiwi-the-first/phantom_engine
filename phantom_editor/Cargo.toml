@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+phantom_core = { path = "../phantom_core"}
+phantom_project = { path = "../phantom_project"}
 phantom_common = { path = "../phantom_common"}
 phantom_runtime = { path = "../phantom_runtime" }
 anyhow = "1.0.102"
@@ -19,3 +21,4 @@ pollster = "0.3"
 egui_dock = { version = "0.19.1", features = ["serde"] }
 serde_json = "1.0.149"
 serde = "1.0.228"
+bincode = "1.3"

@@ -1,4 +1,6 @@
-use crate::actions::command::Command;
+use std::sync::{Arc, Mutex};
+
+use crate::{actions::command::Command, context::EditorContext};
 use log::*;
 
 pub struct Actions {
@@ -14,22 +16,22 @@ impl Actions {
         }
     }
 
-    pub fn do_command(&mut self, mut command: Box<dyn Command>) {
-        command.execute();
+    pub fn do_command(&mut self, mut command: Box<dyn Command>, ctx: &Arc<Mutex<EditorContext>>) {
+        command.execute(ctx);
         self.undo_stack.push(command);
         self.redo_stack.clear();
     }
 
-    pub fn undo(&mut self) {
+    pub fn undo(&mut self, ctx: &Arc<Mutex<EditorContext>>) {
         if let Some(mut command) = self.undo_stack.pop() {
-            command.undo();
+            command.undo(ctx);
             self.redo_stack.push(command);
         }
     }
 
-    pub fn redo(&mut self) {
+    pub fn redo(&mut self, ctx: &Arc<Mutex<EditorContext>>) {
         if let Some(mut command) = self.redo_stack.pop() {
-            command.execute();
+            command.execute(ctx);
             debug!("REDOING!");
             self.undo_stack.push(command);
         }
