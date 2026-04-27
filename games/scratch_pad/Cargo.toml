@@ -1,7 +1,0 @@
-[package]
-name = "scratch_pad"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-phantom_core = { path = "../../phantom_core"}

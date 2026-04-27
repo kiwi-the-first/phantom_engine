@@ -1,14 +1,18 @@
 use std::any::Any;
 
-use crate::{constants::constants::INVALID, ecs::AnyStorage};
+use crate::{constants::invalid::INVALID, ecs::AnyStorage};
 
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct SparseSet<C> {
     sparse: Vec<u32>,     // Index: entity id , Value: dense index
     dense: Vec<C>,        // Index: entity index, Value: data
     pub entity: Vec<u32>, // Index: dense index , Value: entity id
 }
 
-impl<C: Any + 'static> AnyStorage for SparseSet<C> {
+impl<C: Any + 'static + serde::Serialize> AnyStorage for SparseSet<C> {
+    fn serialize(&self) -> Vec<u8> {
+        bincode::serialize(self).unwrap()
+    }
     fn remove(&mut self, entity_id: u32) {
         self.remove(entity_id);
     }

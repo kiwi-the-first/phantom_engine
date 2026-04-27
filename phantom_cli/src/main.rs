@@ -1,4 +1,5 @@
 use directories::ProjectDirs;
+use phantom_common::dirs;
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -23,20 +24,20 @@ fn main() -> Result<()> {
             let path = PathBuf::from(current_dir().unwrap().join(args.path));
 
             // Create log file for editor output
-            let proj_dirs = ProjectDirs::from("", "phantom", "phantom")
-                .expect("Failed to determine system directories");
 
-            let log_path = proj_dirs.cache_dir().join("editor.log");
-            if let Some(parent) = log_path.parent() {
-                std::fs::create_dir_all(parent).ok();
-            }
-
-            let log_file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(&log_path)
-                .ok();
+            let log_file = dirs::cache()
+                .map(|dir| {
+                    std::fs::create_dir_all(&dir).ok();
+                    dir.join("editor.log")
+                })
+                .and_then(|log_path| {
+                    OpenOptions::new()
+                        .create(true)
+                        .write(true)
+                        .truncate(true)
+                        .open(&log_path)
+                        .ok()
+                });
 
             #[cfg(unix)]
             let child = {
@@ -69,8 +70,6 @@ fn main() -> Result<()> {
 
                 cmd.spawn()?
             };
-
-            println!("Editor launched! Logs: {}", log_path.display());
 
             // Explicitly don't wait for child
             drop(child); // Just drop the handle, don't wait

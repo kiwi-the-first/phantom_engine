@@ -1,5 +1,6 @@
 use crate::app::editor_app::EditorApp;
 
+pub mod actions;
 pub mod app;
 pub mod egui;
 pub mod menus;

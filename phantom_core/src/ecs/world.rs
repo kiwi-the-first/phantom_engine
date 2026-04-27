@@ -3,10 +3,13 @@ use std::{
     collections::HashMap,
 };
 
-use crate::ecs::{AnyStorage, Component, Entity, SparseSet, components::Transform, sparse_set};
+use crate::ecs::{
+    AnyStorage, Component, Entity, SparseSet, WorldData, component_registry::COMPONENT_REGISTRY,
+    components::Transform, sparse_set, world_data,
+};
 
 pub struct World {
-    sparse_set_storage: HashMap<TypeId, Box<dyn AnyStorage>>,
+    sparse_set_storage: HashMap<&'static str, Box<dyn AnyStorage>>,
     next_entity_id: u32,
     deleted_entity_ids: Vec<Entity>,
     generations: Vec<u32>,
@@ -51,13 +54,17 @@ impl World {
         });
     }
 
-    pub fn add_component<C: Component>(&mut self, entity: Entity, component: C) -> &mut C {
+    pub fn add_component<C: Component + serde::Serialize>(
+        &mut self,
+        entity: Entity,
+        component: C,
+    ) -> &mut C {
         // Make sure sparse set for C exists if not create it
         self.sparse_set_storage
-            .entry(TypeId::of::<C>())
+            .entry(C::NAME)
             .or_insert_with(|| Box::new(SparseSet::<C>::new()));
 
-        if let Some(sparse_set) = self.sparse_set_storage.get_mut(&TypeId::of::<C>()) {
+        if let Some(sparse_set) = self.sparse_set_storage.get_mut(C::NAME) {
             if let Some(sparse_set) = sparse_set.as_any_mut().downcast_mut::<SparseSet<C>>() {
                 sparse_set.insert(entity.id, component);
             }
@@ -67,7 +74,7 @@ impl World {
     }
 
     pub fn remove_component<C: Component>(&mut self, entity: Entity) {
-        if let Some(sparse_set) = self.sparse_set_storage.get_mut(&TypeId::of::<C>()) {
+        if let Some(sparse_set) = self.sparse_set_storage.get_mut(C::NAME) {
             if let Some(sparse_set) = sparse_set.as_any_mut().downcast_mut::<SparseSet<C>>() {
                 sparse_set.remove(entity.id);
             }
@@ -80,7 +87,7 @@ impl World {
         }
 
         self.sparse_set_storage
-            .get(&TypeId::of::<C>())
+            .get(C::NAME)
             .and_then(|sparse_set| sparse_set.as_any().downcast_ref::<SparseSet<C>>())
             .and_then(|sparse_set| sparse_set.get(entity.id))
     }
@@ -90,7 +97,7 @@ impl World {
             return None;
         }
         self.sparse_set_storage
-            .get_mut(&TypeId::of::<C>())
+            .get_mut(C::NAME)
             .and_then(|sparse_set| sparse_set.as_any_mut().downcast_mut::<SparseSet<C>>())
             .and_then(|sparse_set| sparse_set.get_mut(entity.id))
     }
@@ -100,7 +107,7 @@ impl World {
     pub fn query_with<C: Component>(&self) -> Vec<Entity> {
         let sparse_set = self
             .sparse_set_storage
-            .get(&TypeId::of::<C>())
+            .get(C::NAME)
             .and_then(|sparse_set| sparse_set.as_any().downcast_ref::<SparseSet<C>>());
 
         let mut entities = Vec::new();
@@ -128,6 +135,43 @@ impl World {
 
         result
     }
+
+    pub fn serialize(&self) -> Vec<u8> {
+        let mut components = Vec::new();
+        for (type_name, storage) in &self.sparse_set_storage {
+            let name = type_name.to_string();
+            let bytes = storage.serialize();
+            components.push((name, bytes));
+        }
+
+        let world_data = WorldData {
+            next_entity_id: self.next_entity_id,
+            deleted_entity_ids: self.deleted_entity_ids.clone(),
+            generations: self.generations.clone(),
+            components,
+        };
+
+        bincode::serialize(&world_data).unwrap()
+    }
+
+    pub fn deserialize(data: &[u8]) -> World {
+        let world_data = bincode::deserialize::<WorldData>(data).unwrap();
+
+        let mut world = World::new();
+        world.next_entity_id = world_data.next_entity_id;
+        world.deleted_entity_ids = world_data.deleted_entity_ids;
+        world.generations = world_data.generations;
+
+        for (type_name, bytes) in world_data.components {
+            let registry = COMPONENT_REGISTRY.get().unwrap().lock().unwrap();
+            if let Some((key, deserialize_fn)) = registry.get_key_value(type_name.as_str()) {
+                let storage = deserialize_fn(&bytes);
+                world.sparse_set_storage.insert(key, storage);
+            }
+        }
+
+        world
+    }
 }
 
 #[cfg(test)]
@@ -141,12 +185,7 @@ mod tests {
         let mut world = World::new();
         world.summon();
 
-        assert_eq!(
-            world
-                .sparse_set_storage
-                .contains_key(&TypeId::of::<Transform>()),
-            true
-        );
+        assert_eq!(world.sparse_set_storage.contains_key(Transform::NAME), true);
     }
 
     #[test]
@@ -164,7 +203,7 @@ mod tests {
         let entity = world.summon();
         let sparse_set = world
             .sparse_set_storage
-            .get(&TypeId::of::<Transform>())
+            .get(Transform::NAME)
             .unwrap()
             .as_any()
             .downcast_ref::<SparseSet<Transform>>()
@@ -234,5 +273,32 @@ mod tests {
         assert_eq!(world.get_component::<Transform>(entity_vec[1]), None);
         // Check generations is as long as all max ids
         assert_eq!(world.generations.len(), 2);
+    }
+
+    #[test]
+    fn check_serialize_deserialize() {
+        let mut world = World::new();
+        let entity = world.summon();
+
+        let transform = world.get_component_mut::<Transform>(entity).unwrap();
+        transform.position = Vec3 {
+            x: 1.0,
+            y: 2.0,
+            z: 3.0,
+        };
+
+        let bytes = world.serialize();
+
+        let new_world = World::deserialize(&bytes);
+
+        let transform = new_world.get_component::<Transform>(entity).unwrap();
+        assert_eq!(
+            transform.position,
+            Vec3 {
+                x: 1.0,
+                y: 2.0,
+                z: 3.0
+            }
+        );
     }
 }

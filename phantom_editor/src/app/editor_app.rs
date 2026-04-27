@@ -1,8 +1,13 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
+use std::rc::Rc;
 use std::sync::Arc;
+use std::sync::Mutex;
 
 use egui::Id;
 
+use egui::Key;
+use egui::Modifiers;
 use egui::include_image;
 use egui_dock::DockState;
 use egui_dock::NodeIndex;
@@ -24,6 +29,7 @@ use log::*;
 
 use phantom_runtime::renderer::state::State;
 
+use crate::actions::Actions;
 use crate::egui::egui_renderer::EguiRenderer;
 use crate::menus::view::ViewMenu;
 use crate::menus::view::ViewMenuAction;
@@ -125,6 +131,14 @@ impl ApplicationHandler<State> for EditorApp {
                 });
 
             self.viewport_view = Some(viewport_view);
+
+            let actions = Arc::new(Mutex::new(Actions::new()));
+
+            self.egui_renderer
+                .as_mut()
+                .unwrap()
+                .context()
+                .data_mut(|w| w.insert_temp(Id::new("Actions"), actions));
         }
     }
     #[allow(unused_mut)]
@@ -195,7 +209,7 @@ impl ApplicationHandler<State> for EditorApp {
             return; // Don't render if closing!
         }
         self.prepare_ui_context();
-        self.handle_ui_redraw();
+        self.handle_redraw();
     }
 }
 
@@ -309,8 +323,7 @@ impl EditorApp {
             });
     }
 
-    fn handle_game_rendering(&mut self) {}
-    fn handle_ui_redraw(&mut self) {
+    fn handle_redraw(&mut self) {
         let state = self.state.as_mut().unwrap();
 
         // Attempt to handle minimizing window
@@ -363,6 +376,30 @@ impl EditorApp {
 
             egui_renderer.begin_frame(window);
             let ctx = egui_renderer.context();
+
+            let (should_undo, should_redo) = ctx.input_mut(|i| {
+                let redo = i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
+                let undo = i.consume_key(Modifiers::COMMAND, Key::Z);
+                (undo, redo)
+            });
+
+            if should_undo {
+                if let Some(actions) =
+                    ctx.data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new("Actions")))
+                {
+                    let mut actions = actions.lock().unwrap();
+                    actions.undo();
+                }
+            }
+            if should_redo {
+                if let Some(actions) =
+                    ctx.data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new("Actions")))
+                {
+                    let mut actions = actions.lock().unwrap();
+                    actions.redo();
+                }
+            }
+
             let mut visuals = ctx.style().visuals.clone();
             let black = egui::Color32::from_rgb(10, 10, 10);
             visuals.window_fill = black.clone();
