@@ -32,7 +32,6 @@ impl Actions {
     pub fn redo(&mut self, ctx: &Arc<Mutex<EditorContext>>) {
         if let Some(mut command) = self.redo_stack.pop() {
             command.execute(ctx);
-            debug!("REDOING!");
             self.undo_stack.push(command);
         }
     }

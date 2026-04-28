@@ -8,6 +8,8 @@ use crate::ecs::{
     components::Transform, sparse_set, world_data,
 };
 
+use log::*;
+
 pub struct World {
     sparse_set_storage: HashMap<&'static str, Box<dyn AnyStorage>>,
     next_entity_id: u32,
@@ -41,6 +43,25 @@ impl World {
 
         entity
     }
+    /// This function is intended to be used by Phantom Editor for redo summon entity functionality
+    pub fn summon_with_id(&mut self, entity: Entity) -> Entity {
+        // remove from deleted_entity_ids
+        let entity_index = self
+            .deleted_entity_ids
+            .iter()
+            .position(|&x| x.id == entity.id)
+            .unwrap_or_else(|| {
+                error!("Entity: {} not found in deleted_entity_ids", entity.id);
+                panic!("Entity: {} not found in deleted_entity_ids", entity.id)
+            });
+        let new_entity = self.deleted_entity_ids[entity_index];
+        self.deleted_entity_ids.remove(entity_index);
+
+        // Add transform by default
+        self.add_component(new_entity, Transform::default());
+
+        new_entity
+    }
 
     pub fn destroy(&mut self, entity: Entity) {
         for (_type_id, storage) in self.sparse_set_storage.iter_mut() {
@@ -54,7 +75,7 @@ impl World {
         });
     }
 
-    pub fn add_component<C: Component + serde::Serialize>(
+    pub fn add_component<C: Component + serde::Serialize + Send>(
         &mut self,
         entity: Entity,
         component: C,

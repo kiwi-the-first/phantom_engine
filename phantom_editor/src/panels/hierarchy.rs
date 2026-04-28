@@ -2,7 +2,10 @@ use std::sync::{Arc, Mutex};
 
 use egui::{Id, Sense, Ui};
 
-use crate::actions::{Actions, Command, commands::summon_entity::CommandSummonEntity};
+use crate::{
+    actions::{Actions, Command, commands::summon_entity::CommandSummonEntity},
+    context::EditorContext,
+};
 
 pub struct HierarchyPanel {}
 
@@ -21,7 +24,12 @@ impl HierarchyPanel {
                     .data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new("Actions")))
                 {
                     let mut actions = actions.lock().unwrap();
-                    actions.do_command(Box::new(CommandSummonEntity {}));
+                    let ctx = ui
+                        .ctx()
+                        .data(|r| r.get_temp::<Arc<Mutex<EditorContext>>>(Id::new("EditorCtx")))
+                        .unwrap();
+
+                    actions.do_command(Box::new(CommandSummonEntity::new()), &ctx);
                 }
             }
         });

@@ -143,7 +143,7 @@ impl ApplicationHandler<State> for EditorApp {
                 .context()
                 .data_mut(|w| {
                     w.insert_temp(Id::new("Actions"), actions);
-                    w.insert_temp(Id::new("EditorCtx"), self.editor_context.take())
+                    w.insert_temp(Id::new("EditorCtx"), self.editor_context.take().unwrap())
                 });
         }
     }

@@ -10,9 +10,9 @@ pub fn create_project(name: String, path: PathBuf) -> anyhow::Result<()> {
         .args(["new", "--lib", path.to_str().unwrap()])
         .status()?;
 
+    //Create World File and Folder
     let world = World::new();
     let world_data = world.serialize();
-
     let world_path = path.join("worlds");
     let world_name = world_path.join("initial_world.pworld");
     std::fs::create_dir_all(&world_path)?;
@@ -29,6 +29,7 @@ fn create_pproject_file(
     path: PathBuf,
     world_path: PathBuf,
 ) -> Result<PhantomProject> {
+    let path = path.canonicalize()?;
     let version = phantom_core::constants::VERSION;
     let pproject = PhantomProject {
         name: name,

@@ -9,7 +9,7 @@ pub struct SparseSet<C> {
     pub entity: Vec<u32>, // Index: dense index , Value: entity id
 }
 
-impl<C: Any + 'static + serde::Serialize> AnyStorage for SparseSet<C> {
+impl<C: Any + 'static + serde::Serialize + Send> AnyStorage for SparseSet<C> {
     fn serialize(&self) -> Vec<u8> {
         bincode::serialize(self).unwrap()
     }
