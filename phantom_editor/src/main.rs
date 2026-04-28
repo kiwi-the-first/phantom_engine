@@ -23,10 +23,7 @@ fn main() -> Result<()> {
     println!("path: {}", args.get(1).unwrap());
     let path = PathBuf::from(args.get(1).unwrap());
     let (project, init_world) = ProjectManager::load(path)?;
-    let editor_context = EditorContext {
-        project: project,
-        active_world: init_world,
-    };
+    let editor_context = EditorContext::new(project, init_world);
 
     EditorApp::run(editor_context).unwrap();
     Ok(())

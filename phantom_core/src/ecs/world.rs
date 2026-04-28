@@ -4,8 +4,10 @@ use std::{
 };
 
 use crate::ecs::{
-    AnyStorage, Component, Entity, SparseSet, WorldData, component_registry::COMPONENT_REGISTRY,
-    components::Transform, sparse_set, world_data,
+    AnyStorage, Component, Entity, SparseSet, WorldData,
+    component_registry::COMPONENT_REGISTRY,
+    components::{Name, Transform},
+    sparse_set, world_data,
 };
 
 use log::*;
@@ -38,8 +40,9 @@ impl World {
                 generation: 0,
             }
         });
-        // Add transform by default
+        // Add transform and name by default
         self.add_component(entity, Transform::default());
+        self.add_component(entity, Name::default());
 
         entity
     }
@@ -57,8 +60,9 @@ impl World {
         let new_entity = self.deleted_entity_ids[entity_index];
         self.deleted_entity_ids.remove(entity_index);
 
-        // Add transform by default
+        // Add transform and name by default
         self.add_component(new_entity, Transform::default());
+        self.add_component(entity, Name::default());
 
         new_entity
     }
