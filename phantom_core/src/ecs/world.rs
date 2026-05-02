@@ -62,7 +62,7 @@ impl World {
 
         // Add transform and name by default
         self.add_component(new_entity, Transform::default());
-        self.add_component(entity, Name::default());
+        self.add_component(new_entity, Name::default());
 
         new_entity
     }

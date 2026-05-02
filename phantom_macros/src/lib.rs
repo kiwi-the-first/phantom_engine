@@ -9,6 +9,9 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let fn_name = quote::format_ident!("__deserialize_{}", struct_name_lower);
 
     let generated = quote! {
+        use ::phantom_core::ecs::AnyStorage;
+        use ::phantom_core::ecs::SparseSet;
+        use ::phantom_core::ecs::component::Component;
         #[derive(serde::Serialize, serde::Deserialize)]
         #ast
 
@@ -22,7 +25,7 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #[::ctor::ctor]
         fn register() {
-            ::phantom_core::ecs::component_info::register_component(
+            ::phantom_core::ecs::component_registry::register_component(
                 #struct_name::NAME,
                 #fn_name
             );

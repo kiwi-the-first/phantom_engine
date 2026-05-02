@@ -2146,6 +2146,7 @@ dependencies = [
  "env_logger",
  "image",
  "log",
+ "parking_lot",
  "phantom_common",
  "phantom_core",
  "phantom_project",
@@ -2188,6 +2189,7 @@ name = "phantom_runtime"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ctor",
  "env_logger",
  "log",
  "pollster",

@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use egui::{Id, Ui};
 
 use crate::{
-    render_resoruces::RenderReourceKey,
+    resources::ResourceKey,
     workspaces::{BuiltInWorkspace, Workspace, WorkspaceConfig, workspace},
 };
 
@@ -25,19 +25,19 @@ impl ViewMenu {
         let mut view_action = None;
         let available_workspaces = ui
             .ctx()
-            .data(|r| r.get_temp::<Vec<String>>(Id::new(RenderReourceKey::AvailableWorkspaces)))
+            .data(|r| r.get_temp::<Vec<String>>(Id::new(ResourceKey::AvailableWorkspaces)))
             .unwrap();
 
         let active_workspace_name = ui
             .ctx()
-            .data(|r| r.get_temp::<String>(Id::new(RenderReourceKey::ActiveWorkspaceName)))
+            .data(|r| r.get_temp::<String>(Id::new(ResourceKey::ActiveWorkspaceName)))
             .unwrap();
 
         let active_workspace_type = ui
             .ctx()
             .data(|r| {
                 r.get_temp::<Option<BuiltInWorkspace>>(Id::new(
-                    RenderReourceKey::ActiveWorkspaceBuiltInType,
+                    ResourceKey::ActiveWorkspaceBuiltInType,
                 ))
             })
             .unwrap();

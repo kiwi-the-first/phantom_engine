@@ -1,6 +1,4 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::rc::Rc;
 use std::sync::Arc;
 use std::sync::Mutex;
 
@@ -17,6 +15,7 @@ use egui_wgpu::ScreenDescriptor;
 use egui_wgpu::wgpu;
 use egui_wgpu::wgpu::TextureView;
 use egui_wgpu::wgpu::wgt::TextureViewDescriptor;
+use phantom_common::dirs;
 use phantom_runtime::renderer::scene_renderer::SceneRenderer;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
@@ -31,13 +30,13 @@ use phantom_runtime::renderer::state::State;
 
 use crate::actions::Actions;
 use crate::context::EditorContext;
-use crate::context::editor_context;
 use crate::egui::egui_renderer::EguiRenderer;
+use crate::logger::Logger;
 use crate::menus::view::ViewMenu;
 use crate::menus::view::ViewMenuAction;
 use crate::panels::Panels;
 use crate::persitance::layout;
-use crate::render_resoruces::render_recource_keys::RenderReourceKey;
+use crate::resources::ResourceKey;
 use crate::workspaces::BuiltInWorkspace;
 use crate::workspaces::Workspace;
 use crate::workspaces::WorkspaceConfig;
@@ -130,7 +129,7 @@ impl ApplicationHandler<State> for EditorApp {
                 .unwrap()
                 .context()
                 .data_mut(|d| {
-                    d.insert_temp(Id::new(RenderReourceKey::ViewportTexture), texture_id);
+                    d.insert_temp(Id::new(ResourceKey::ViewportTexture), texture_id);
                 });
 
             self.viewport_view = Some(viewport_view);
@@ -142,8 +141,11 @@ impl ApplicationHandler<State> for EditorApp {
                 .unwrap()
                 .context()
                 .data_mut(|w| {
-                    w.insert_temp(Id::new("Actions"), actions);
-                    w.insert_temp(Id::new("EditorCtx"), self.editor_context.take().unwrap())
+                    w.insert_temp(Id::new(ResourceKey::Actions), actions);
+                    w.insert_persisted(
+                        Id::new(ResourceKey::EditorContext),
+                        self.editor_context.take().unwrap(),
+                    );
                 });
         }
     }
@@ -272,7 +274,18 @@ impl EditorApp {
     }
 
     pub fn run(editor_context: EditorContext) -> anyhow::Result<()> {
-        env_logger::init();
+        if let Some(file) = Logger::create_log_file() {
+            env_logger::Builder::new()
+                .target(env_logger::Target::Pipe(Box::new(file)))
+                .filter_module("phantom_editor", log::LevelFilter::Trace)
+                .init();
+        } else {
+            log::trace!(
+                "FAILED TO CREATE LOG FILE AT {}",
+                dirs::cache().unwrap().to_str().unwrap()
+            );
+            env_logger::init();
+        }
 
         let event_loop = EventLoop::with_user_event().build()?;
         let mut app = EditorApp::new();
@@ -317,15 +330,15 @@ impl EditorApp {
             .context()
             .data_mut(|w| {
                 w.insert_temp(
-                    Id::new(RenderReourceKey::ActiveWorkspaceName),
+                    Id::new(ResourceKey::ActiveWorkspaceName),
                     active_workspace_name,
                 );
                 w.insert_temp(
-                    Id::new(RenderReourceKey::AvailableWorkspaces),
+                    Id::new(ResourceKey::AvailableWorkspaces),
                     available_workspaces,
                 );
                 w.insert_temp(
-                    Id::new(RenderReourceKey::ActiveWorkspaceBuiltInType),
+                    Id::new(ResourceKey::ActiveWorkspaceBuiltInType),
                     active_builtin_workspace_type,
                 )
             });
@@ -392,26 +405,30 @@ impl EditorApp {
             });
 
             if should_undo {
-                if let Some(actions) =
-                    ctx.data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new("Actions")))
+                if let Some(actions) = ctx
+                    .data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new(ResourceKey::Actions)))
                 {
                     let mut actions = actions.lock().unwrap();
                     actions.undo(
                         &ctx.data_mut(|w| {
-                            w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new("EditorCtx"))
+                            w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(
+                                ResourceKey::EditorContext,
+                            ))
                         })
                         .unwrap(),
                     );
                 }
             }
             if should_redo {
-                if let Some(actions) =
-                    ctx.data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new("Actions")))
+                if let Some(actions) = ctx
+                    .data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new(ResourceKey::Actions)))
                 {
                     let mut actions = actions.lock().unwrap();
                     actions.redo(
                         &ctx.data_mut(|w| {
-                            w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new("EditorCtx"))
+                            w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(
+                                ResourceKey::EditorContext,
+                            ))
                         })
                         .unwrap(),
                     );

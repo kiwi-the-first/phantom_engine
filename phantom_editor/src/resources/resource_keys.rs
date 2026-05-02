@@ -1,5 +1,7 @@
 #[derive(Hash)]
-pub enum RenderReourceKey {
+pub enum ResourceKey {
+    Actions,
+    EditorContext,
     ViewportTexture,
     AvailableWorkspaces,
     ActiveWorkspaceName,

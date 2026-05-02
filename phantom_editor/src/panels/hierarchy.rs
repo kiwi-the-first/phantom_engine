@@ -7,6 +7,7 @@ use phantom_core::ecs::{Entity, components::Name};
 use crate::{
     actions::{Actions, Command, commands::summon_entity::CommandSummonEntity},
     context::EditorContext,
+    resources::ResourceKey,
 };
 
 pub struct HierarchyPanel {}
@@ -20,7 +21,9 @@ impl HierarchyPanel {
         ScrollArea::vertical().show(ui, |ui| {
             let ctx = ui
                 .ctx()
-                .data(|r| r.get_temp::<Arc<Mutex<EditorContext>>>(Id::new("EditorCtx")))
+                .data(|r| {
+                    r.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
+                })
                 .unwrap();
 
             let entities_and_names: Vec<(Entity, String)> = {
@@ -38,6 +41,7 @@ impl HierarchyPanel {
 
             for (entity, name) in entities_and_names {
                 let selected = ctx.lock().unwrap().selected_entity == Some(entity);
+                // Make font black if selected
                 let font_color = if selected {
                     Color32::BLACK
                 } else {
@@ -69,22 +73,7 @@ impl HierarchyPanel {
                 }
 
                 response.context_menu(|ui| {
-                    if ui.button("Summon Empty").clicked() {
-                        if let Some(actions) = ui
-                            .ctx()
-                            .data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new("Actions")))
-                        {
-                            let mut actions = actions.lock().unwrap();
-                            let ctx = ui
-                                .ctx()
-                                .data(|r| {
-                                    r.get_temp::<Arc<Mutex<EditorContext>>>(Id::new("EditorCtx"))
-                                })
-                                .unwrap();
-
-                            actions.do_command(Box::new(CommandSummonEntity::new()), &ctx);
-                        }
-                    }
+                    standard_context_menu(ui);
                 });
             }
             // Outside of list
@@ -92,23 +81,27 @@ impl HierarchyPanel {
             let space = ui.allocate_space(size);
             ui.interact(space.1, space.0, Sense::click())
                 .context_menu(|ui| {
-                    if ui.button("Summon Empty").clicked() {
-                        if let Some(actions) = ui
-                            .ctx()
-                            .data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new("Actions")))
-                        {
-                            let mut actions = actions.lock().unwrap();
-                            let ctx = ui
-                                .ctx()
-                                .data(|r| {
-                                    r.get_temp::<Arc<Mutex<EditorContext>>>(Id::new("EditorCtx"))
-                                })
-                                .unwrap();
-
-                            actions.do_command(Box::new(CommandSummonEntity::new()), &ctx);
-                        }
-                    }
+                    standard_context_menu(ui);
                 });
         });
+    }
+}
+
+fn standard_context_menu(ui: &mut Ui) {
+    if ui.button("Summon Empty").clicked() {
+        if let Some(actions) = ui
+            .ctx()
+            .data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new(ResourceKey::Actions)))
+        {
+            let mut actions = actions.lock().unwrap();
+            let ctx = ui
+                .ctx()
+                .data(|r| {
+                    r.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
+                })
+                .unwrap();
+
+            actions.do_command(Box::new(CommandSummonEntity::new()), &ctx);
+        }
     }
 }

@@ -11,11 +11,12 @@ pub mod actions;
 pub mod app;
 pub mod context;
 pub mod egui;
+pub mod logger;
 pub mod menus;
 pub mod panels;
 pub mod persitance;
 pub mod project_manager;
-pub mod render_resoruces;
+pub mod resources;
 pub mod workspaces;
 
 fn main() -> Result<()> {
