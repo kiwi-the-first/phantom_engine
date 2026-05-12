@@ -3,6 +3,8 @@ use glam::*;
 use crate::ecs::AnyStorage;
 use crate::ecs::SparseSet;
 use crate::ecs::component::Component;
+use crate::reflecton::Reflection;
+use crate::reflecton::fields::Field;
 use phantom_macros::component;
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -10,6 +12,30 @@ pub struct Transform {
     pub position: Vec3,
     pub rotation: Quat,
     pub scale: Vec3,
+}
+
+impl Reflection for Transform {
+    fn get_fields(&self) -> Vec<Field> {
+        vec![
+            Field::Vec3("position", self.position),
+            Field::TransQuat("rotation", self.rotation),
+            Field::Vec3("scale", self.scale),
+        ]
+    }
+    fn set_feilds(&mut self, fields: Vec<Field>) {
+        match fields.get(0).unwrap() {
+            Field::Vec3(_name, position_field) => self.position = *position_field,
+            _ => {}
+        };
+        match fields.get(1).unwrap() {
+            Field::TransQuat(_name, rotation_field) => self.rotation = *rotation_field,
+            _ => {}
+        };
+        match fields.get(2).unwrap() {
+            Field::Vec3(_name, scale_field) => self.scale = *scale_field,
+            _ => {}
+        };
+    }
 }
 
 impl Component for Transform {

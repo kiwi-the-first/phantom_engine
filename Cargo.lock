@@ -2144,6 +2144,7 @@ dependencies = [
  "egui_dock",
  "egui_extras",
  "env_logger",
+ "glam",
  "image",
  "log",
  "parking_lot",
@@ -2189,7 +2190,6 @@ name = "phantom_runtime"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "ctor",
  "env_logger",
  "log",
  "pollster",

@@ -1,15 +1,30 @@
 use crate::ecs::{AnyStorage, Component, SparseSet};
-
+use crate::reflecton::Reflection;
+use crate::reflecton::fields::Field;
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Name {
     pub name: String,
+}
+
+impl Reflection for Name {
+    fn get_fields(&self) -> Vec<Field> {
+        vec![Field::NameString("name", self.name.clone())]
+    }
+    fn set_feilds(&mut self, fields: Vec<Field>) {
+        match fields.get(0).unwrap() {
+            Field::NameString(name, name_field) => {
+                self.name = name_field.to_string();
+            }
+            _ => {}
+        };
+    }
 }
 
 impl Component for Name {
     const NAME: &'static str = "Name";
 }
 
-#[::ctor::ctor]
+#[ctor::ctor]
 fn __register_name() {
     crate::ecs::component_registry::register_component("Name", __deserialize_name);
 }

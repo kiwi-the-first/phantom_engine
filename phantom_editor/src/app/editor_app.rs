@@ -142,7 +142,7 @@ impl ApplicationHandler<State> for EditorApp {
                 .context()
                 .data_mut(|w| {
                     w.insert_temp(Id::new(ResourceKey::Actions), actions);
-                    w.insert_persisted(
+                    w.insert_temp(
                         Id::new(ResourceKey::EditorContext),
                         self.editor_context.take().unwrap(),
                     );
@@ -213,8 +213,7 @@ impl ApplicationHandler<State> for EditorApp {
 
     fn about_to_wait(&mut self, _event_loop: &ActiveEventLoop) {
         if self.state.is_none() || self.is_closing {
-            // ← CHECK FLAG
-            return; // Don't render if closing!
+            return;
         }
         self.prepare_ui_context();
         self.handle_redraw();

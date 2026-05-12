@@ -3,11 +3,14 @@ use std::{
     collections::HashMap,
 };
 
-use crate::ecs::{
-    AnyStorage, Component, Entity, SparseSet, WorldData,
-    component_registry::COMPONENT_REGISTRY,
-    components::{Name, Transform},
-    sparse_set, world_data,
+use crate::{
+    ecs::{
+        AnyStorage, Component, Entity, SparseSet, WorldData, component,
+        component_registry::COMPONENT_REGISTRY,
+        components::{Name, Transform},
+        sparse_set, world_data,
+    },
+    reflecton::{Reflection, fields::Field},
 };
 
 use log::*;
@@ -79,7 +82,7 @@ impl World {
         });
     }
 
-    pub fn add_component<C: Component + serde::Serialize + Send>(
+    pub fn add_component<C: Component + Reflection + serde::Serialize + Send>(
         &mut self,
         entity: Entity,
         component: C,
@@ -159,6 +162,31 @@ impl World {
             .collect();
 
         result
+    }
+
+    pub fn get_component_fields(&self, entity: Entity) -> Vec<(String, Vec<Field>)> {
+        let mut components = Vec::new();
+        for (type_name, storage) in &self.sparse_set_storage {
+            let fields = storage.get_feilds(entity.id);
+            components.push((type_name.to_string(), fields));
+        }
+        components
+    }
+
+    pub fn set_component_fields(
+        &mut self,
+        component_name: String,
+        entity: Entity,
+        fields: Vec<Field>,
+    ) {
+        let sparse_set = self
+            .sparse_set_storage
+            .get_mut(component_name.as_str())
+            .unwrap_or_else(|| {
+                trace!("Setting component data via inspector failed");
+                panic!("Setting component data via inspector failed");
+            });
+        sparse_set.set_fields(entity.id, fields);
     }
 
     pub fn serialize(&self) -> Vec<u8> {

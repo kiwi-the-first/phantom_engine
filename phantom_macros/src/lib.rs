@@ -6,32 +6,26 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let ast: syn::DeriveInput = syn::parse(item).unwrap();
     let struct_name = &ast.ident;
     let struct_name_lower = struct_name.to_string().to_lowercase();
-    let fn_name = quote::format_ident!("__deserialize_{}", struct_name_lower);
+    let deserialize_fn = quote::format_ident!("__phantom_deserialize_{}", struct_name_lower);
+    let register_fn = quote::format_ident!("__phantom_register_{}", struct_name_lower);
 
     let generated = quote! {
-        use ::phantom_core::ecs::AnyStorage;
-        use ::phantom_core::ecs::SparseSet;
-        use ::phantom_core::ecs::component::Component;
-        #[derive(serde::Serialize, serde::Deserialize)]
+        #[derive(::phantom_core::serde::Serialize, ::phantom_core::serde::Deserialize)]
+        #[serde(crate = "::phantom_core::serde")]
         #ast
 
-        impl Component for #struct_name {
+        impl ::phantom_core::ecs::component::Component for #struct_name {
             const NAME: &'static str = stringify!(#struct_name);
         }
 
-        fn #fn_name(data: &[u8]) -> Box<dyn AnyStorage> {
-            Box::new(bincode::deserialize::<SparseSet<#struct_name>>(data).unwrap())
+        fn #deserialize_fn(data: &[u8]) -> ::std::boxed::Box<dyn ::phantom_core::ecs::AnyStorage> {
+            ::std::boxed::Box::new(::phantom_core::bincode::deserialize::<::phantom_core::ecs::SparseSet<#struct_name>>(data).unwrap())
         }
 
-        #[::ctor::ctor]
-        fn register() {
-            ::phantom_core::ecs::component_registry::register_component(
-                #struct_name::NAME,
-                #fn_name
-            );
+        #[::phantom_core::ctor::ctor]
+        fn #register_fn() {
+            ::phantom_core::ecs::component_registry::register_component(<#struct_name as ::phantom_core::ecs::component::Component>::NAME, #deserialize_fn);
         }
-
-
     };
 
     generated.into()

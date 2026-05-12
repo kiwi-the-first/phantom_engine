@@ -1,6 +1,10 @@
 use std::any::Any;
 
-use crate::{constants::invalid::INVALID, ecs::AnyStorage};
+use crate::{
+    constants::invalid::INVALID,
+    ecs::{AnyStorage, Component, component},
+    reflecton::{Reflection, fields::Field},
+};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SparseSet<C> {
@@ -9,7 +13,9 @@ pub struct SparseSet<C> {
     pub entity: Vec<u32>, // Index: dense index , Value: entity id
 }
 
-impl<C: Any + 'static + serde::Serialize + Send> AnyStorage for SparseSet<C> {
+impl<C: Component + Reflection + Any + 'static + serde::Serialize + Send> AnyStorage
+    for SparseSet<C>
+{
     fn serialize(&self) -> Vec<u8> {
         bincode::serialize(self).unwrap()
     }
@@ -21,6 +27,18 @@ impl<C: Any + 'static + serde::Serialize + Send> AnyStorage for SparseSet<C> {
     }
     fn as_any_mut(&mut self) -> &mut dyn Any {
         self
+    }
+    fn has(&self, entity_id: u32) -> bool {
+        self.entity.contains(&entity_id)
+    }
+    fn get_feilds(&self, entity_id: u32) -> Vec<Field> {
+        let component = &self.dense[self.sparse[entity_id as usize] as usize];
+        component.get_fields()
+    }
+
+    fn set_fields(&mut self, entity_id: u32, fields: Vec<Field>) {
+        let component = &mut self.dense[self.sparse[entity_id as usize] as usize];
+        component.set_feilds(fields);
     }
 }
 
