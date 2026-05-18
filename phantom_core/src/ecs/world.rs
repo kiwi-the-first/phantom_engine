@@ -217,7 +217,7 @@ impl World {
 
         for (type_name, bytes) in world_data.components {
             let registry = COMPONENT_REGISTRY.get().unwrap().lock().unwrap();
-            if let Some((key, deserialize_fn)) = registry.get_key_value(type_name.as_str()) {
+            if let Some((key, (deserialize_fn, _))) = registry.get_key_value(type_name.as_str()) {
                 let storage = deserialize_fn(&bytes);
                 world.sparse_set_storage.insert(key, storage);
             }

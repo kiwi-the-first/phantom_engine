@@ -1,9 +1,12 @@
 use std::sync::{Arc, Mutex};
 
-use egui::{Grid, Id, Label, RichText, Spacing, Ui, Vec2};
+use egui::{Grid, Id, Label, Layout, RichText, Spacing, TextBuffer, Ui, Vec2};
 use glam::{Quat, Vec3};
 use log::*;
-use phantom_core::reflecton::fields::{self, Field};
+use phantom_core::{
+    ecs::component_registry::{self, COMPONENT_REGISTRY},
+    reflecton::fields::{self, Field},
+};
 use winit::platform::x11;
 
 use crate::{context::EditorContext, resources::ResourceKey};
@@ -25,7 +28,7 @@ impl InspectorPanel {
                 let world = &mut ectx.active_world;
                 let mut components = world.get_component_fields(selected_entity.unwrap());
                 components.sort_by_key(|(name, _)| match name.as_str() {
-                    /// Make sure Name, Transform are always at the top of the component list
+                    // Make sure Name, Transform are always at the top of the component list
                     "Name" => 0,
                     "Transform" => 1,
                     _ => 2,
@@ -35,10 +38,11 @@ impl InspectorPanel {
                     ui.label(RichText::new(&component_name).strong());
                     for (index, field) in fields.iter().enumerate() {
                         match field {
-                            /// This field is for the built in Name Component
-                            /// it removes the field_name from display
+                            // This field is for the built in Name Component
+                            // it removes the field_name from display
                             Field::NameString(field_name, string) => {
-                                let id = Id::new((selected_entity.unwrap().id, index));
+                                let id =
+                                    Id::new((selected_entity.unwrap().id, &component_name, index));
                                 if ui.data_mut(|w| w.get_temp::<String>(id)).is_none() {
                                     //insert feild name
                                     ui.data_mut(|w| w.insert_temp::<&'static str>(id, field_name));
@@ -51,7 +55,7 @@ impl InspectorPanel {
                                 ui.data_mut(|w| w.insert_temp(id, text));
                                 if response.lost_focus() {
                                     let mut new_fields = fields.clone();
-                                    new_fields[index] = Field::String(
+                                    new_fields[index] = Field::NameString(
                                         ui.data_mut(|w| w.get_temp::<&'static str>(id).unwrap()),
                                         ui.data_mut(|w| w.get_temp::<String>(id)).unwrap(),
                                     );
@@ -67,7 +71,8 @@ impl InspectorPanel {
                                 };
                             }
                             Field::String(field_name, string) => {
-                                let id = Id::new((selected_entity.unwrap().id, index));
+                                let id =
+                                    Id::new((selected_entity.unwrap().id, &component_name, index));
                                 if ui.data_mut(|w| w.get_temp::<String>(id)).is_none() {
                                     //insert feild name
                                     ui.data_mut(|w| w.insert_temp::<&'static str>(id, field_name));
@@ -103,7 +108,6 @@ impl InspectorPanel {
                                 };
                             }
                             Field::Vec3(field_name, vec3) => {
-                                
                                 let mut x = vec3.x;
                                 let mut y = vec3.y;
                                 let mut z = vec3.z;
@@ -151,8 +155,8 @@ impl InspectorPanel {
                                     };
                                 });
                             }
-                            /// This field is for the built in Transform Component
-                            /// it converts the Quat into Euler for modification 
+                            // This field is for the built in Transform Component
+                            // it converts the Quat into Euler for modification
                             Field::TransQuat(field_name, quat) => {
                                 let euler = quat.to_euler(glam::EulerRot::XYZ);
 
@@ -230,8 +234,27 @@ impl InspectorPanel {
                             _ => {}
                         };
                     }
-                    ui.end_row();
+                    ui.separator();
                 }
+                let registered_components = component_registry::get_registered_component_names();
+                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
+                    let response = ui
+                        .menu_button("ADD COMPONENT", |ui| {
+                            for component in registered_components {
+                                if component.as_str() != "Transform" && component.as_str() != "Name"
+                                {
+                                    if ui.button(component.as_str()).clicked() {
+                                        component_registry::add_component_by_name(
+                                            world,
+                                            selected_entity.unwrap(),
+                                            component.as_str(),
+                                        );
+                                    };
+                                }
+                            }
+                        })
+                        .response;
+                });
             }
         }
         ui.separator();

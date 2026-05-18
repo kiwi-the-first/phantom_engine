@@ -1,4 +1,4 @@
-use crate::ecs::{AnyStorage, Component, SparseSet};
+use crate::ecs::{AnyStorage, Component, Entity, SparseSet, World};
 use crate::reflecton::Reflection;
 use crate::reflecton::fields::Field;
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -12,7 +12,7 @@ impl Reflection for Name {
     }
     fn set_feilds(&mut self, fields: Vec<Field>) {
         match fields.get(0).unwrap() {
-            Field::NameString(name, name_field) => {
+            Field::NameString(_name, name_field) => {
                 self.name = name_field.to_string();
             }
             _ => {}
@@ -26,11 +26,21 @@ impl Component for Name {
 
 #[ctor::ctor]
 fn __register_name() {
-    crate::ecs::component_registry::register_component("Name", __deserialize_name);
+    crate::ecs::component_registry::register_component(
+        "Name",
+        __deserialize_name,
+        __add_default_name,
+    );
 }
 
 fn __deserialize_name(data: &[u8]) -> Box<dyn AnyStorage> {
     Box::new(bincode::deserialize::<SparseSet<Name>>(data).unwrap())
+}
+
+fn __add_default_name(entity: Entity) -> Box<dyn FnOnce(&mut World)> {
+    Box::new(move |world| {
+        world.add_component(entity, Name::default());
+    })
 }
 
 impl Default for Name {

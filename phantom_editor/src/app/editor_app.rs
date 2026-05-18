@@ -435,9 +435,10 @@ impl EditorApp {
             }
 
             let mut visuals = ctx.style().visuals.clone();
-            let black = egui::Color32::from_rgb(10, 10, 10);
+            let black = egui::Color32::BLACK;
             visuals.window_fill = black.clone();
             visuals.panel_fill = black.clone();
+            visuals.extreme_bg_color = black.clone();
             visuals.selection.bg_fill = egui::Color32::from_hex("#8959d5").unwrap();
             visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
 

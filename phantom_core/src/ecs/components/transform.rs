@@ -1,7 +1,9 @@
 use glam::*;
 
 use crate::ecs::AnyStorage;
+use crate::ecs::Entity;
 use crate::ecs::SparseSet;
+use crate::ecs::World;
 use crate::ecs::component::Component;
 use crate::reflecton::Reflection;
 use crate::reflecton::fields::Field;
@@ -44,11 +46,21 @@ impl Component for Transform {
 
 #[::ctor::ctor]
 fn __register_transform() {
-    crate::ecs::component_registry::register_component("Transform", __deserialize_transform);
+    crate::ecs::component_registry::register_component(
+        "Transform",
+        __deserialize_transform,
+        __add_default_transform,
+    );
 }
 
 fn __deserialize_transform(data: &[u8]) -> Box<dyn AnyStorage> {
     Box::new(bincode::deserialize::<SparseSet<Transform>>(data).unwrap())
+}
+
+fn __add_default_transform(entity: Entity) -> Box<dyn FnOnce(&mut World)> {
+    Box::new(move |world| {
+        world.add_component(entity, Transform::default());
+    })
 }
 
 impl Default for Transform {
