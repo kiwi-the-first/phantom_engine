@@ -167,8 +167,10 @@ impl World {
     pub fn get_component_fields(&self, entity: Entity) -> Vec<(String, Vec<Field>)> {
         let mut components = Vec::new();
         for (type_name, storage) in &self.sparse_set_storage {
-            let fields = storage.get_feilds(entity.id);
-            components.push((type_name.to_string(), fields));
+            if storage.has(entity.id) {
+                let fields = storage.get_feilds(entity.id);
+                components.push((type_name.to_string(), fields));
+            }
         }
         components
     }

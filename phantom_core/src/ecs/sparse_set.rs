@@ -32,6 +32,19 @@ impl<C: Component + Reflection + Any + 'static + serde::Serialize + Send> AnySto
         self.entity.contains(&entity_id)
     }
     fn get_feilds(&self, entity_id: u32) -> Vec<Field> {
+        if entity_id as usize >= self.sparse.len() {
+            log::trace!(
+                "entity id {} is greater than {}",
+                entity_id,
+                self.sparse.len()
+            );
+            return vec![];
+        }
+        let dense_index = self.sparse[entity_id as usize];
+        if dense_index == INVALID {
+            log::trace!("entity id {} is not valid!", entity_id);
+            return vec![];
+        }
         let component = &self.dense[self.sparse[entity_id as usize] as usize];
         component.get_fields()
     }
