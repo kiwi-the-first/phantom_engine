@@ -16,6 +16,8 @@ use egui_wgpu::wgpu;
 use egui_wgpu::wgpu::TextureView;
 use egui_wgpu::wgpu::wgt::TextureViewDescriptor;
 use phantom_common::dirs;
+use phantom_runtime::asset_manager::asset_manager;
+use phantom_runtime::asset_manager::asset_manager::AssetManager;
 use phantom_runtime::renderer::scene_renderer::SceneRenderer;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
@@ -30,6 +32,7 @@ use phantom_runtime::renderer::state::State;
 
 use crate::actions::Actions;
 use crate::context::EditorContext;
+use crate::context::editor_context;
 use crate::egui::egui_renderer::EguiRenderer;
 use crate::logger::Logger;
 use crate::menus::view::ViewMenu;
@@ -77,6 +80,14 @@ impl ApplicationHandler<State> for EditorApp {
 
         self.state = Some(state);
         self.egui_renderer = Some(egui_renderer);
+
+        self.editor_context
+            .as_ref()
+            .unwrap()
+            .lock()
+            .unwrap()
+            .sync_assets()
+            .expect("COULD NOT LOAD ASSETS");
 
         if self.state.is_some() {
             let view_port_texture =
@@ -215,6 +226,7 @@ impl ApplicationHandler<State> for EditorApp {
         if self.state.is_none() || self.is_closing {
             return;
         }
+
         self.prepare_ui_context();
         self.handle_redraw();
     }
@@ -275,8 +287,10 @@ impl EditorApp {
     pub fn run(editor_context: EditorContext) -> anyhow::Result<()> {
         if let Some(file) = Logger::create_log_file() {
             env_logger::Builder::new()
-                .target(env_logger::Target::Pipe(Box::new(file)))
+                .target(env_logger::Target::Stdout)
+                //.target(env_logger::Target::Pipe(Box::new(file)))
                 .filter_module("phantom_editor", log::LevelFilter::Trace)
+                .filter_module("phantom_runtime", log::LevelFilter::Trace)
                 .init();
         } else {
             log::trace!(
@@ -431,6 +445,15 @@ impl EditorApp {
                         })
                         .unwrap(),
                     );
+                }
+            }
+
+            // Try to sync assets if there are no assets to sync this will skip
+            if let Some(ectx) = &ctx.data_mut(|w| {
+                w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
+            }) {
+                if let Err(e) = ectx.lock().unwrap().sync_assets() {
+                    log::error!("Failed to sync assets: {}", e);
                 }
             }
 

@@ -9,6 +9,7 @@ use winit::window::{Window, WindowId};
 
 use log::*;
 
+use crate::asset_manager::asset_manager::AssetManager;
 use crate::renderer::scene_renderer::SceneRenderer;
 use crate::renderer::state::State;
 
@@ -16,6 +17,7 @@ use crate::renderer::state::State;
 pub struct App {
     state: Option<State>,
     scene_renderer: Option<SceneRenderer>,
+    asset_manager: Option<AssetManager>,
 }
 
 impl ApplicationHandler<State> for App {
@@ -23,11 +25,14 @@ impl ApplicationHandler<State> for App {
         let window_attributes = Window::default_attributes();
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
 
-        self.state = Some(pollster::block_on(State::new(window)).unwrap());
         self.scene_renderer = Some(SceneRenderer::new(
             &self.state.as_ref().unwrap().device,
             self.state.as_ref().unwrap().surface_format(),
-        ))
+        ));
+
+        // TODO LOAD FROM KNOWN PATHS AFTER BUILD
+        // self.asset_manager = Some(AssetManager::new());
+        // self.asset_manager.unwrap().load_texture_assets(world);
     }
     #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
@@ -106,6 +111,7 @@ impl App {
         Self {
             state: None,
             scene_renderer: None,
+            asset_manager: None,
         }
     }
 

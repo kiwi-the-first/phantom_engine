@@ -1,5 +1,5 @@
 use image::RgbaImage;
 
 pub struct Texture {
-    rgba_image: RgbaImage,
+    pub rgba_image: RgbaImage,
 }

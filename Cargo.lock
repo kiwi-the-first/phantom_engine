@@ -2535,6 +2535,7 @@ dependencies = [
  "env_logger",
  "image",
  "log",
+ "phantom_core",
  "pollster",
  "wgpu",
  "winit",

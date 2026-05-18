@@ -11,7 +11,7 @@ use crate::reflecton::fields::Field;
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize, Default)]
 pub struct Sprite {
-    asset_path: String,
+    pub asset_path: String,
 }
 
 impl Reflection for Sprite {

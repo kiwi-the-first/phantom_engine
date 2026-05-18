@@ -23,8 +23,8 @@ fn main() -> Result<()> {
     let args: Vec<String> = std::env::args().collect();
     println!("path: {}", args.get(1).unwrap());
     let path = PathBuf::from(args.get(1).unwrap());
-    let (project, init_world) = ProjectManager::load(path)?;
-    let editor_context = EditorContext::new(project, init_world);
+    let (project, init_world) = ProjectManager::load(path.clone())?;
+    let editor_context = EditorContext::new(path, project, init_world);
 
     EditorApp::run(editor_context).unwrap();
     Ok(())
