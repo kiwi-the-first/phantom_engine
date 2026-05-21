@@ -1,4 +1,4 @@
-use egui::{Id, TextureId, Ui};
+use egui::{Id, TextureId, Ui, Vec2};
 
 use crate::resources::ResourceKey;
 
@@ -16,6 +16,9 @@ impl ViewportPanel {
         {
             let size = ui.available_size();
             ui.image(egui::load::SizedTexture::new(id, size));
+            ui.data_mut(|w| {
+                w.insert_temp::<Vec2>(Id::new(ResourceKey::ViewportSize), size.clone())
+            });
         }
     }
 }

@@ -2532,7 +2532,9 @@ name = "phantom_runtime"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bytemuck",
  "env_logger",
+ "glam",
  "image",
  "log",
  "phantom_core",

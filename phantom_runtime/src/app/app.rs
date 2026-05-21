@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use phantom_core::ecs::World;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -27,6 +28,7 @@ impl ApplicationHandler<State> for App {
 
         self.scene_renderer = Some(SceneRenderer::new(
             &self.state.as_ref().unwrap().device,
+            &self.state.as_ref().unwrap().queue,
             self.state.as_ref().unwrap().surface_format(),
         ));
 
@@ -100,7 +102,13 @@ impl ApplicationHandler<State> for App {
                 label: Some("Render Encoder"),
             });
 
-        scene_renderer.render(&mut encoder, &view);
+        scene_renderer.render(
+            &state.device,
+            &state.queue,
+            &mut encoder,
+            &view,
+            &World::new(),
+        );
         state.queue.submit(std::iter::once(encoder.finish()));
         output.present();
     }

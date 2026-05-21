@@ -7,7 +7,6 @@ use phantom_core::{
     ecs::component_registry::{self, COMPONENT_REGISTRY},
     reflecton::fields::{self, Field},
 };
-use winit::platform::x11;
 
 use crate::{context::EditorContext, resources::ResourceKey};
 
@@ -158,12 +157,28 @@ impl InspectorPanel {
                             // This field is for the built in Transform Component
                             // it converts the Quat into Euler for modification
                             Field::TransQuat(field_name, quat) => {
+                                let id =
+                                    Id::new((selected_entity.unwrap().id, &component_name, index));
+
                                 let euler = quat.to_euler(glam::EulerRot::XYZ);
+                                if ui.data_mut(|w| w.get_temp::<(f32, f32, f32)>(id)).is_none() {
+                                    ui.data_mut(|w| w.insert_temp::<&'static str>(id, field_name));
+                                    ui.data_mut(|w| w.insert_temp::<(f32, f32, f32)>(id, euler));
+                                };
 
                                 let vec3 = Vec3::new(
-                                    euler.0.to_degrees(),
-                                    euler.1.to_degrees(),
-                                    euler.2.to_degrees(),
+                                    ui.data(|r| r.get_temp::<(f32, f32, f32)>(id))
+                                        .unwrap()
+                                        .0
+                                        .to_degrees(),
+                                    ui.data(|r| r.get_temp::<(f32, f32, f32)>(id))
+                                        .unwrap()
+                                        .1
+                                        .to_degrees(),
+                                    ui.data(|r| r.get_temp::<(f32, f32, f32)>(id))
+                                        .unwrap()
+                                        .2
+                                        .to_degrees(),
                                 );
                                 let mut x = vec3.x;
                                 let mut y = vec3.y;
@@ -184,6 +199,12 @@ impl InspectorPanel {
                                             selected_entity.unwrap(),
                                             new_fields,
                                         );
+                                        ui.data_mut(|w| {
+                                            w.insert_temp::<(f32, f32, f32)>(
+                                                id,
+                                                (x.to_radians(), y.to_radians(), z.to_radians()),
+                                            )
+                                        });
                                     };
                                     if ui
                                         .add(
@@ -203,6 +224,12 @@ impl InspectorPanel {
                                             selected_entity.unwrap(),
                                             new_fields,
                                         );
+                                        ui.data_mut(|w| {
+                                            w.insert_temp::<(f32, f32, f32)>(
+                                                id,
+                                                (x.to_radians(), y.to_radians(), z.to_radians()),
+                                            )
+                                        });
                                     };
                                     if ui
                                         .add(
@@ -222,6 +249,12 @@ impl InspectorPanel {
                                             selected_entity.unwrap(),
                                             new_fields,
                                         );
+                                        ui.data_mut(|w| {
+                                            w.insert_temp::<(f32, f32, f32)>(
+                                                id,
+                                                (x.to_radians(), y.to_radians(), z.to_radians()),
+                                            )
+                                        });
                                     };
                                 });
                             }

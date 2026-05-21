@@ -6,3 +6,5 @@ pub use sprite::Sprite;
 
 pub mod name;
 pub use name::Name;
+
+pub mod camera;

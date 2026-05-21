@@ -1,18 +1,56 @@
+use std::collections::HashMap;
+
+use phantom_core::ecs::World;
+use phantom_core::ecs::components::{Sprite, Transform};
+use wgpu::util::DeviceExt;
+
+use crate::asset_manager::asset_types::texture::Texture;
+use crate::renderer::vertex::Vertex;
+
 pub struct SceneRenderer {
     render_pipeline: wgpu::RenderPipeline,
+    bind_group_layout: wgpu::BindGroupLayout,
+    gpu_textures: HashMap<String, wgpu::BindGroup>,
 }
 
 impl SceneRenderer {
-    pub fn new(device: &wgpu::Device, surface_format: wgpu::TextureFormat) -> Self {
+    pub fn new(
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        surface_format: wgpu::TextureFormat,
+    ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Triangle"),
-            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/triangle.wgsl").into()),
+            label: Some("Sprite Shader"),
+            source: wgpu::ShaderSource::Wgsl(include_str!("shaders/sprite_shader.wgsl").into()),
         });
+
+        let texture_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("texture_bind_group_layout"),
+                entries: &[
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Texture {
+                            sample_type: wgpu::TextureSampleType::Float { filterable: true },
+                            view_dimension: wgpu::TextureViewDimension::D2,
+                            multisampled: false,
+                        },
+                        count: None,
+                    },
+                    wgpu::BindGroupLayoutEntry {
+                        binding: 1,
+                        visibility: wgpu::ShaderStages::FRAGMENT,
+                        ty: wgpu::BindingType::Sampler(wgpu::SamplerBindingType::Filtering),
+                        count: None,
+                    },
+                ],
+            });
 
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[],
+                bind_group_layouts: &[Some(&texture_bind_group_layout)],
                 immediate_size: 0,
             });
 
@@ -22,7 +60,7 @@ impl SceneRenderer {
             vertex: wgpu::VertexState {
                 module: &shader,
                 entry_point: Some("vs_main"), // 1.
-                buffers: &[],                 // 2.
+                buffers: &[Vertex::desc()],   // 2.
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
             },
             fragment: Some(wgpu::FragmentState {
@@ -32,7 +70,7 @@ impl SceneRenderer {
                 targets: &[Some(wgpu::ColorTargetState {
                     // 4.
                     format: surface_format,
-                    blend: Some(wgpu::BlendState::REPLACE),
+                    blend: Some(wgpu::BlendState::ALPHA_BLENDING),
                     write_mask: wgpu::ColorWrites::ALL,
                 })],
                 compilation_options: wgpu::PipelineCompilationOptions::default(),
@@ -58,18 +96,97 @@ impl SceneRenderer {
             multiview_mask: None, // 5.
             cache: None,          // 6.
         });
-        Self { render_pipeline }
+        Self {
+            render_pipeline,
+            bind_group_layout: texture_bind_group_layout,
+            gpu_textures: HashMap::new(),
+        }
+    }
+
+    pub fn build_sprite_verticies(&self, world: &World) -> Vec<Vertex> {
+        let entities = world.query_with2::<Sprite, Transform>();
+        let vertices = entities
+            .iter()
+            .flat_map(|entity| {
+                let transform = world.get_component::<Transform>(*entity).unwrap();
+                let (_, _, angle) = transform.rotation.to_euler(glam::EulerRot::XYZ);
+                let cos_a = angle.cos();
+                let sin_a = angle.sin();
+
+                let sx = transform.scale.x;
+                let sy = transform.scale.y;
+                let px = transform.position.x;
+                let py = transform.position.y;
+                let pz = transform.position.z;
+
+                let vertices: Vec<Vertex> = vec![
+                    // Triangle 1
+                    Vertex {
+                        position: [
+                            (-sx * cos_a - sy * sin_a) + px,
+                            (-sx * sin_a + sy * cos_a) + py,
+                            pz,
+                        ],
+                        tex_coords: [0.0, 0.0],
+                    }, // Top Left
+                    Vertex {
+                        position: [
+                            (-sx * cos_a + sy * sin_a) + px,
+                            (-sx * sin_a - sy * cos_a) + py,
+                            pz,
+                        ],
+                        tex_coords: [0.0, 1.0],
+                    }, // Bottom Left
+                    Vertex {
+                        position: [
+                            (sx * cos_a + sy * sin_a) + px,
+                            (sx * sin_a - sy * cos_a) + py,
+                            pz,
+                        ],
+                        tex_coords: [1.0, 1.0],
+                    }, // Bottom Right
+                    // Triangle 2
+                    Vertex {
+                        position: [
+                            (-sx * cos_a - sy * sin_a) + px,
+                            (-sx * sin_a + sy * cos_a) + py,
+                            pz,
+                        ],
+                        tex_coords: [0.0, 0.0],
+                    }, // Top Left
+                    Vertex {
+                        position: [
+                            (sx * cos_a + sy * sin_a) + px,
+                            (sx * sin_a - sy * cos_a) + py,
+                            pz,
+                        ],
+                        tex_coords: [1.0, 1.0],
+                    }, // Bottom Right
+                    Vertex {
+                        position: [
+                            (sx * cos_a - sy * sin_a) + px,
+                            (sx * sin_a + sy * cos_a) + py,
+                            pz,
+                        ],
+                        tex_coords: [1.0, 0.0],
+                    }, // Top Right
+                ];
+
+                vertices
+            })
+            .collect();
+        vertices
     }
 
     pub fn render(
         &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
+        world: &World,
     ) -> anyhow::Result<()> {
-        // // We can't render unless the surface is configured
-        // if !self.is_surface_configured {
-        //     return Ok(());
-        // }
+        let verticies = self.build_sprite_verticies(world);
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -93,9 +210,119 @@ impl SceneRenderer {
                 timestamp_writes: None,
                 multiview_mask: None,
             });
-            render_pass.set_pipeline(&self.render_pipeline); // 2.
-            render_pass.draw(0..3, 0..1); // 3.
+
+            if !verticies.is_empty() {
+                let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+                    label: Some("Vertex Buffer"),
+                    contents: bytemuck::cast_slice(&verticies),
+                    usage: wgpu::BufferUsages::VERTEX,
+                });
+                let entities = world.query_with2::<Sprite, Transform>();
+                render_pass.set_pipeline(&self.render_pipeline);
+                render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+
+                for (index, entity) in entities.iter().enumerate() {
+                    let sprite = world.get_component::<Sprite>(*entity).unwrap();
+                    let start = (index * 6) as u32;
+                    let end = start + 6;
+
+                    if let Some(bind_group) = self.gpu_textures.get(&sprite.asset_path) {
+                        render_pass.set_bind_group(0, bind_group, &[]);
+                        render_pass.draw(start..end, 0..1);
+                    }
+                }
+            }
         }
         Ok(())
+    }
+
+    pub fn upload_textures(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        textures: &HashMap<String, Texture>,
+    ) {
+        for (path, texture) in textures {
+            if !self.gpu_textures.contains_key(path) {
+                let dimensions = texture.rgba_image.dimensions();
+
+                let texture_size = wgpu::Extent3d {
+                    width: dimensions.0,
+                    height: dimensions.1,
+                    // All textures are stored as 3D, we represent our 2D texture
+                    // by setting depth to 1.
+                    depth_or_array_layers: 1,
+                };
+
+                let diffuse_texture = device.create_texture(&wgpu::TextureDescriptor {
+                    size: texture_size,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                    dimension: wgpu::TextureDimension::D2,
+                    // Most images are stored using sRGB, so we need to reflect that here.
+                    format: wgpu::TextureFormat::Rgba8UnormSrgb,
+                    // TEXTURE_BINDING tells wgpu that we want to use this texture in shaders
+                    // COPY_DST means that we want to copy data to this texture
+                    usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+                    label: Some("diffuse_texture"),
+                    // This is the same as with the SurfaceConfig. It
+                    // specifies what texture formats can be used to
+                    // create TextureViews for this texture. The base
+                    // texture format (Rgba8UnormSrgb in this case) is
+                    // always supported. Note that using a different
+                    // texture format is not supported on the WebGL2
+                    // backend.
+                    view_formats: &[],
+                });
+
+                queue.write_texture(
+                    // Tells wgpu where to copy the pixel data
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &diffuse_texture,
+                        mip_level: 0,
+                        origin: wgpu::Origin3d::ZERO,
+                        aspect: wgpu::TextureAspect::All,
+                    },
+                    // The actual pixel data
+                    &texture.rgba_image.as_raw(),
+                    // The layout of the texture
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(4 * dimensions.0),
+                        rows_per_image: Some(dimensions.1),
+                    },
+                    texture_size,
+                );
+
+                let diffuse_texture_view =
+                    diffuse_texture.create_view(&wgpu::TextureViewDescriptor::default());
+                let diffuse_sampler = device.create_sampler(&wgpu::SamplerDescriptor {
+                    address_mode_u: wgpu::AddressMode::ClampToEdge,
+                    address_mode_v: wgpu::AddressMode::ClampToEdge,
+                    address_mode_w: wgpu::AddressMode::ClampToEdge,
+                    mag_filter: wgpu::FilterMode::Nearest,
+                    min_filter: wgpu::FilterMode::Nearest,
+                    mipmap_filter: wgpu::MipmapFilterMode::Nearest,
+                    ..Default::default()
+                });
+
+                let bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    layout: &self.bind_group_layout,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: wgpu::BindingResource::TextureView(&diffuse_texture_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::Sampler(&diffuse_sampler),
+                        },
+                    ],
+                    label: Some("diffuse_bind_group"),
+                });
+
+                self.gpu_textures.insert(path.clone(), bind_group);
+            }
+        }
     }
 }

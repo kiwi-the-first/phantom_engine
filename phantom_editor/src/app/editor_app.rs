@@ -2,10 +2,13 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use egui::Context;
 use egui::Id;
 
 use egui::Key;
 use egui::Modifiers;
+use egui::Ui;
+use egui::Vec2;
 use egui::include_image;
 use egui_dock::DockState;
 use egui_dock::NodeIndex;
@@ -14,6 +17,7 @@ use egui_dock::SurfaceIndex;
 use egui_wgpu::ScreenDescriptor;
 use egui_wgpu::wgpu;
 use egui_wgpu::wgpu::TextureView;
+use egui_wgpu::wgpu::wgc::id::TextureId;
 use egui_wgpu::wgpu::wgt::TextureViewDescriptor;
 use phantom_common::dirs;
 use phantom_runtime::asset_manager::asset_manager;
@@ -55,6 +59,7 @@ pub struct EditorApp {
     dock_state: DockState<Workspace>,
     workspace_viewer: WorkspaceViewer,
     view_port_texture: Option<wgpu::Texture>,
+    current_viewport_size: Option<egui::Vec2>,
     scene_renderer: Option<SceneRenderer>,
     viewport_view: Option<TextureView>,
     editor_context: Option<Arc<Mutex<EditorContext>>>,
@@ -81,6 +86,7 @@ impl ApplicationHandler<State> for EditorApp {
         self.state = Some(state);
         self.egui_renderer = Some(egui_renderer);
 
+        // LOAD TEXTURES ON STARTUP
         self.editor_context
             .as_ref()
             .unwrap()
@@ -89,6 +95,7 @@ impl ApplicationHandler<State> for EditorApp {
             .sync_assets()
             .expect("COULD NOT LOAD ASSETS");
 
+        // GENERATE VIEWPORT TEXTURE
         if self.state.is_some() {
             let view_port_texture =
                 self.state
@@ -98,8 +105,8 @@ impl ApplicationHandler<State> for EditorApp {
                     .create_texture(&wgpu::TextureDescriptor {
                         label: Some("viewport"),
                         size: wgpu::Extent3d {
-                            width: 800,
-                            height: 600,
+                            width: self.current_viewport_size.unwrap().x as u32,
+                            height: self.current_viewport_size.unwrap().y as u32,
                             depth_or_array_layers: 1,
                         },
                         mip_level_count: 1,
@@ -114,6 +121,7 @@ impl ApplicationHandler<State> for EditorApp {
 
             self.scene_renderer = Some(SceneRenderer::new(
                 &self.state.as_ref().unwrap().device,
+                &self.state.as_ref().unwrap().queue,
                 wgpu::TextureFormat::Rgba8UnormSrgb,
             ));
 
@@ -278,6 +286,7 @@ impl EditorApp {
             avalible_workspaces: available_workspaces,
             workspace_viewer: WorkspaceViewer::new(),
             view_port_texture: None,
+            current_viewport_size: Some(Vec2::new(600.0, 800.0)),
             viewport_view: None,
             scene_renderer: None,
             editor_context: None,
@@ -357,6 +366,53 @@ impl EditorApp {
             });
     }
 
+    fn handle_resize(&mut self, viewport_size: Vec2, texture_id: egui::TextureId) {
+        if self.current_viewport_size.unwrap_or(Vec2::ZERO) != viewport_size {
+            log::trace!(
+                "viewport size changed from {:?} to {:?}",
+                self.current_viewport_size,
+                viewport_size
+            );
+            let view_port_texture =
+                self.state
+                    .as_ref()
+                    .unwrap()
+                    .device
+                    .create_texture(&wgpu::TextureDescriptor {
+                        label: Some("viewport"),
+                        size: wgpu::Extent3d {
+                            width: viewport_size.x as u32,
+                            height: viewport_size.y as u32,
+                            depth_or_array_layers: 1,
+                        },
+                        mip_level_count: 1,
+                        sample_count: 1,
+                        dimension: wgpu::TextureDimension::D2,
+                        format: wgpu::TextureFormat::Rgba8Unorm,
+                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
+                            | wgpu::TextureUsages::TEXTURE_BINDING,
+                        view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
+                    });
+
+            let viewport_view = view_port_texture.create_view(&Default::default());
+
+            let _texture_id = self
+                .egui_renderer
+                .as_mut()
+                .unwrap()
+                .egui_renderer
+                .update_egui_texture_from_wgpu_texture(
+                    &self.state.as_ref().unwrap().device,
+                    &viewport_view,
+                    wgpu::FilterMode::Linear,
+                    texture_id,
+                );
+            self.view_port_texture = Some(view_port_texture);
+            self.viewport_view = Some(viewport_view);
+            self.current_viewport_size = Some(viewport_size);
+        }
+    }
+
     fn handle_redraw(&mut self) {
         let state = self.state.as_mut().unwrap();
 
@@ -394,16 +450,29 @@ impl EditorApp {
                 });
 
         let mut encoder = state.device.create_command_encoder(&Default::default());
-        self.scene_renderer
-            .as_mut()
-            .unwrap()
-            .render(&mut encoder, &viewport_render_view)
-            .expect("RENDERING FAILED"); // this a terrible way to handle this error but rn im lazy
+        let egui_renderer = self.egui_renderer.as_mut().unwrap();
+        let ctx = egui_renderer.context();
+        if let Some(ectx) = &ctx.data_mut(|w| {
+            w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
+        }) {
+            let ectx_lock = ectx.lock().unwrap();
+            let world = &ectx_lock.active_world;
+            self.scene_renderer
+                .as_mut()
+                .unwrap()
+                .render(
+                    &state.device,
+                    &state.queue,
+                    &mut encoder,
+                    &viewport_render_view,
+                    &world,
+                )
+                .expect("RENDERING FAILED"); // this a terrible way to handle this error but rn im lazy
+        }
 
         let window = state.window.as_ref();
 
         let mut view_menu_action = None;
-
         {
             let show_close = self.dock_state.iter_all_tabs().count() > 1;
             let egui_renderer = self.egui_renderer.as_mut().unwrap();
@@ -455,6 +524,14 @@ impl EditorApp {
                 if let Err(e) = ectx.lock().unwrap().sync_assets() {
                     log::error!("Failed to sync assets: {}", e);
                 }
+
+                let ectx_lock = ectx.lock().unwrap();
+                let textures = &ectx_lock.asset_manager.textures;
+                self.scene_renderer.as_mut().unwrap().upload_textures(
+                    &state.device,
+                    &state.queue,
+                    &textures,
+                );
             }
 
             let mut visuals = ctx.style().visuals.clone();
@@ -468,6 +545,7 @@ impl EditorApp {
             let screen_rect = ctx.viewport_rect();
 
             ctx.set_visuals(visuals);
+
             //DRAW HERE
 
             egui::Area::new("main_dock_area".into()).show(ctx, |ui| {
@@ -521,6 +599,20 @@ impl EditorApp {
 
         state.queue.submit(Some(encoder.finish()));
         output.present();
+
+        let (viewport_size, texture_id) = {
+            let egui_renderer = self.egui_renderer.as_ref().unwrap();
+            let ctx = egui_renderer.context();
+            (
+                ctx.data(|r| r.get_temp::<egui::Vec2>(Id::new(ResourceKey::ViewportSize))),
+                ctx.data(|r| r.get_temp::<egui::TextureId>(Id::new(ResourceKey::ViewportTexture))),
+            )
+        };
+        if let (Some(viewport_size), Some(texture_id)) = (viewport_size, texture_id) {
+            log::trace!("handle_resize called with size: {:?}", viewport_size);
+
+            self.handle_resize(viewport_size, texture_id);
+        }
 
         match view_menu_action {
             Some(ViewMenuAction::OpenWorkspace(name)) => {

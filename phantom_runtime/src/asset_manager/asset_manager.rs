@@ -1,4 +1,7 @@
-use std::{collections::HashMap, path::Path};
+use std::{
+    collections::HashMap,
+    path::{Path, PathBuf},
+};
 
 use anyhow::{Ok, Result};
 use phantom_core::ecs::{Entity, World, components::Sprite};
@@ -7,7 +10,7 @@ use crate::asset_manager::asset_types::texture::Texture;
 
 pub struct AssetManager {
     processed_entities: HashMap<u32, String>,
-    textures: HashMap<String, Texture>,
+    pub textures: HashMap<String, Texture>,
 }
 
 impl AssetManager {
@@ -33,7 +36,13 @@ impl AssetManager {
         for entity in entitys_with_sprites {
             let sprite_component = world.get_component::<Sprite>(entity).unwrap();
             let sprite_path = sprite_component.asset_path.clone();
-            let full_path = project_root.join(&sprite_path);
+
+            let full_path = if sprite_path.starts_with(project_root.to_str().unwrap()) {
+                PathBuf::from(&sprite_path)
+            } else {
+                project_root.join(&sprite_path)
+            };
+
             if sprite_path.is_empty() || !Path::new(&full_path).exists() {
                 log::warn!("Invalid or missing sprite path: {}", sprite_path);
                 self.processed_entities
