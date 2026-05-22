@@ -1,5 +1,8 @@
 use anyhow::Result;
-use phantom_core::ecs::World;
+use phantom_core::ecs::{
+    World,
+    components::{Name, camera::Camera},
+};
 use std::{fs::create_dir_all, io::Write, path::PathBuf, process::Command};
 
 use crate::phantom_project::PhantomProject;
@@ -11,7 +14,16 @@ pub fn create_project(name: String, path: PathBuf) -> anyhow::Result<()> {
         .status()?;
 
     //Create World File and Folder
-    let world = World::new();
+    let mut world = World::new();
+
+    // Setup Main Camera
+    let camera = world.summon();
+    let name_comp = world.get_component_mut::<Name>(camera).unwrap();
+    name_comp.name = "Main Camera".to_string();
+    let camera_comp = world.add_component::<Camera>(camera, Camera::default());
+    camera_comp.zoom = 100.0;
+
+    //Save World File
     let world_data = world.serialize();
     let world_path = path.join("worlds");
     let world_name = world_path.join("initial_world.pworld");

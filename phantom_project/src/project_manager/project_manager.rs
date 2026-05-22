@@ -1,8 +1,9 @@
+use std::io::Write;
 use std::path::PathBuf;
 
+use crate::phantom_project::PhantomProject;
 use anyhow::{Ok, Result};
 use phantom_core::ecs::World;
-use phantom_project::phantom_project::PhantomProject;
 
 pub struct ProjectManager {}
 
@@ -13,6 +14,15 @@ impl ProjectManager {
         let world_bytes = std::fs::read(&world_path)?;
         let world = World::deserialize(&world_bytes);
         Ok((pproject, world))
+    }
+
+    pub fn save(path: PathBuf, world: &World) -> anyhow::Result<()> {
+        let pproject = get_pproject(&path)?;
+        let world_path = path.parent().unwrap().join(&pproject.entry_world);
+        let world_data = world.serialize();
+        let mut file = std::fs::File::create(&world_path)?;
+        file.write_all(&world_data)?;
+        Ok(())
     }
 }
 

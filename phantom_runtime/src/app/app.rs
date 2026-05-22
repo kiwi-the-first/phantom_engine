@@ -1,6 +1,7 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use glam::Vec2;
 use phantom_core::ecs::World;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
@@ -108,6 +109,7 @@ impl ApplicationHandler<State> for App {
             &mut encoder,
             &view,
             &World::new(),
+            Vec2::new(state.config.width as f32, state.config.height as f32),
         );
         state.queue.submit(std::iter::once(encoder.finish()));
         output.present();

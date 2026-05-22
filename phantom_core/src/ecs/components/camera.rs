@@ -12,17 +12,25 @@ use phantom_macros::component;
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Camera {
     pub zoom: f32,
+    pub background_color: [u8; 4],
 }
 
 impl Reflection for Camera {
     fn get_fields(&self) -> Vec<Field> {
-        vec![Field::F32("zoom", self.zoom)]
+        vec![
+            Field::F32("Zoom", self.zoom),
+            Field::Color("Background Color", self.background_color),
+        ]
     }
     fn set_feilds(&mut self, fields: Vec<Field>) {
         match fields.get(0).unwrap() {
             Field::F32(_name, zoom_field) => self.zoom = *zoom_field,
             _ => {}
         };
+        match fields.get(1).unwrap() {
+            Field::Color(_name, background_color) => self.background_color = *background_color,
+            _ => {}
+        }
     }
 }
 
@@ -51,7 +59,10 @@ fn __add_default_camera(entity: Entity) -> Box<dyn FnOnce(&mut World)> {
 
 impl Default for Camera {
     fn default() -> Self {
-        Self { zoom: 1.0 }
+        Self {
+            zoom: 1.0,
+            background_color: [3, 4, 12, 255],
+        }
     }
 }
 

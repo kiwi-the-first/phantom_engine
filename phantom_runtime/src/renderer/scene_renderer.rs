@@ -1,6 +1,8 @@
 use std::collections::HashMap;
 
+use glam::Vec2;
 use phantom_core::ecs::World;
+use phantom_core::ecs::components::camera::{self, Camera};
 use phantom_core::ecs::components::{Sprite, Transform};
 use wgpu::util::DeviceExt;
 
@@ -11,6 +13,9 @@ pub struct SceneRenderer {
     render_pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
     gpu_textures: HashMap<String, wgpu::BindGroup>,
+    camera_buffer: wgpu::Buffer,
+    camera_bind_group_layout: wgpu::BindGroupLayout,
+    camera_bind_group: wgpu::BindGroup,
 }
 
 impl SceneRenderer {
@@ -20,8 +25,39 @@ impl SceneRenderer {
         surface_format: wgpu::TextureFormat,
     ) -> Self {
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
-            label: Some("Sprite Shader"),
+            label: Some("sprite_shader"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/sprite_shader.wgsl").into()),
+        });
+
+        let camera_buffer = device.create_buffer(&wgpu::BufferDescriptor {
+            label: Some("camerea_buffer"),
+            size: std::mem::size_of::<glam::Mat4>() as u64,
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+            mapped_at_creation: false,
+        });
+
+        let camera_bind_group_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("camera_bind_group_layout"),
+                entries: &[wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::VERTEX,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                }],
+            });
+
+        let camera_bind_group = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("camera_bind_group"),
+            layout: &camera_bind_group_layout,
+            entries: &[wgpu::BindGroupEntry {
+                binding: 0,
+                resource: camera_buffer.as_entire_binding(),
+            }],
         });
 
         let texture_bind_group_layout =
@@ -50,7 +86,10 @@ impl SceneRenderer {
         let render_pipeline_layout =
             device.create_pipeline_layout(&wgpu::PipelineLayoutDescriptor {
                 label: Some("Render Pipeline Layout"),
-                bind_group_layouts: &[Some(&texture_bind_group_layout)],
+                bind_group_layouts: &[
+                    Some(&texture_bind_group_layout),
+                    Some(&camera_bind_group_layout),
+                ],
                 immediate_size: 0,
             });
 
@@ -79,7 +118,7 @@ impl SceneRenderer {
                 topology: wgpu::PrimitiveTopology::TriangleList, // 1.
                 strip_index_format: None,
                 front_face: wgpu::FrontFace::Ccw, // 2.
-                cull_mode: Some(wgpu::Face::Back),
+                cull_mode: None,
                 // Setting this to anything other than Fill requires Features::NON_FILL_POLYGON_MODE
                 polygon_mode: wgpu::PolygonMode::Fill,
                 // Requires Features::DEPTH_CLIP_CONTROL
@@ -100,6 +139,9 @@ impl SceneRenderer {
             render_pipeline,
             bind_group_layout: texture_bind_group_layout,
             gpu_textures: HashMap::new(),
+            camera_buffer,
+            camera_bind_group_layout,
+            camera_bind_group,
         }
     }
 
@@ -185,8 +227,37 @@ impl SceneRenderer {
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         world: &World,
+        viewport_size: Vec2,
     ) -> anyhow::Result<()> {
         let verticies = self.build_sprite_verticies(world);
+
+        let camera_matrix =
+            if let Some(camera_entity) = world.query_with2::<Camera, Transform>().first() {
+                let camera = world.get_component::<Camera>(*camera_entity).unwrap();
+                let transform = world.get_component::<Transform>(*camera_entity).unwrap();
+                let left = transform.position.x - (viewport_size.x / 2.0) / camera.zoom;
+                let right = transform.position.x + (viewport_size.x / 2.0) / camera.zoom;
+                let bottom = transform.position.y - (viewport_size.y / 2.0) / camera.zoom;
+                let top = transform.position.y + (viewport_size.y / 2.0) / camera.zoom;
+                let near = -1000.0;
+                let far = 1000.0;
+                glam::Mat4::orthographic_rh(left, right, bottom, top, near, far)
+            } else {
+                glam::Mat4::IDENTITY
+            };
+
+        let camera_color = if let Some(camera_entity) = world.query_with::<Camera>().first() {
+            let camera = world.get_component::<Camera>(*camera_entity).unwrap();
+            let color = camera.background_color;
+            color
+        } else {
+            [0, 0, 0, 0]
+        };
+        queue.write_buffer(
+            &self.camera_buffer,
+            0,
+            bytemuck::cast_slice(&camera_matrix.to_cols_array()),
+        );
 
         {
             let mut render_pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -197,10 +268,10 @@ impl SceneRenderer {
                     depth_slice: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
-                            r: 0.1,
-                            g: 0.2,
-                            b: 0.3,
-                            a: 1.0,
+                            r: camera_color[0] as f64 / 255.0,
+                            g: camera_color[1] as f64 / 255.0,
+                            b: camera_color[2] as f64 / 255.0,
+                            a: camera_color[3] as f64 / 255.0,
                         }),
                         store: wgpu::StoreOp::Store,
                     },
@@ -220,6 +291,7 @@ impl SceneRenderer {
                 let entities = world.query_with2::<Sprite, Transform>();
                 render_pass.set_pipeline(&self.render_pipeline);
                 render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
+                render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
 
                 for (index, entity) in entities.iter().enumerate() {
                     let sprite = world.get_component::<Sprite>(*entity).unwrap();

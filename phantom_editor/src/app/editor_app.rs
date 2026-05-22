@@ -39,6 +39,7 @@ use crate::context::EditorContext;
 use crate::context::editor_context;
 use crate::egui::egui_renderer::EguiRenderer;
 use crate::logger::Logger;
+use crate::menus::file::FileMenu;
 use crate::menus::view::ViewMenu;
 use crate::menus::view::ViewMenuAction;
 use crate::panels::Panels;
@@ -457,6 +458,16 @@ impl EditorApp {
         }) {
             let ectx_lock = ectx.lock().unwrap();
             let world = &ectx_lock.active_world;
+            let size = glam::Vec2 {
+                x: self
+                    .current_viewport_size
+                    .unwrap_or(egui::Vec2::new(800.0, 600.0))
+                    .x,
+                y: self
+                    .current_viewport_size
+                    .unwrap_or(egui::Vec2::new(800.0, 600.0))
+                    .y,
+            };
             self.scene_renderer
                 .as_mut()
                 .unwrap()
@@ -466,6 +477,7 @@ impl EditorApp {
                     &mut encoder,
                     &viewport_render_view,
                     &world,
+                    size,
                 )
                 .expect("RENDERING FAILED"); // this a terrible way to handle this error but rn im lazy
         }
@@ -563,7 +575,9 @@ impl EditorApp {
                                 );
 
                                 egui::MenuBar::new().ui(ui, |ui| {
-                                    ui.menu_button("File", |ui| {});
+                                    ui.menu_button("File", |ui| {
+                                        FileMenu::show(ui);
+                                    });
                                     ui.menu_button("Edit", |ui| {});
                                     ui.menu_button("Tools", |ui| {});
                                     ui.menu_button("View", |ui| {
@@ -609,8 +623,6 @@ impl EditorApp {
             )
         };
         if let (Some(viewport_size), Some(texture_id)) = (viewport_size, texture_id) {
-            log::trace!("handle_resize called with size: {:?}", viewport_size);
-
             self.handle_resize(viewport_size, texture_id);
         }
 

@@ -35,7 +35,7 @@ impl Component for Sprite {
 #[::ctor::ctor]
 fn __register_sprite() {
     crate::ecs::component_registry::register_component(
-        "sprite",
+        "Sprite",
         __deserialize_sprite,
         __add_default_sprite,
     );

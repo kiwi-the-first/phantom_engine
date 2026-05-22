@@ -8,4 +8,5 @@ pub enum Field {
     F32(&'static str, f32),
     Vec3(&'static str, Vec3),
     Quat(&'static str, Quat),
+    Color(&'static str, [u8; 4]),
 }

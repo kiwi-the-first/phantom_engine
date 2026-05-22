@@ -1,10 +1,13 @@
 use std::sync::{Arc, Mutex};
 
-use egui::{Grid, Id, Label, Layout, RichText, Spacing, TextBuffer, Ui, Vec2};
+use egui::{Color32, Grid, Id, Label, Layout, RichText, Spacing, TextBuffer, Ui, Vec2};
 use glam::{Quat, Vec3};
 use log::*;
 use phantom_core::{
-    ecs::component_registry::{self, COMPONENT_REGISTRY},
+    ecs::{
+        Entity,
+        component_registry::{self, COMPONENT_REGISTRY},
+    },
     reflecton::fields::{self, Field},
 };
 
@@ -261,8 +264,57 @@ impl InspectorPanel {
                             Field::Quat(field_name, quat) => {
                                 ui.label(format!("{}", quat));
                             }
-                            Field::F32(field_name, f32) => {
-                                ui.label(format!("{}", f32));
+                            Field::F32(field_name, float32) => {
+                                let id =
+                                    Id::new((selected_entity.unwrap().id, &component_name, index));
+                                if ui.data_mut(|w| w.get_temp::<f32>(id)).is_none() {
+                                    // insert data
+                                    ui.data_mut(|w| w.insert_temp::<f32>(id, float32.clone()));
+                                }
+
+                                let mut value = ui.data_mut(|w| w.get_temp::<f32>(id)).unwrap();
+                                ui.horizontal(|ui| {
+                                    ui.label(*field_name);
+                                    if ui
+                                        .add(egui::DragValue::new(&mut value).prefix("").speed(0.1))
+                                        .changed()
+                                    {
+                                        ui.data_mut(|w| w.insert_temp::<f32>(id, value));
+                                        let mut new_fields = fields.clone();
+                                        new_fields[index] = Field::F32(
+                                            field_name,
+                                            ui.data(|r| r.get_temp::<f32>(id)).unwrap(),
+                                        );
+                                        world.set_component_fields(
+                                            component_name.clone(),
+                                            selected_entity.unwrap(),
+                                            new_fields,
+                                        );
+                                    }
+                                });
+                            }
+                            Field::Color(field_name, color) => {
+                                let id = generate_id(selected_entity, &component_name, index);
+                                let color = Color32::from_rgba_unmultiplied(
+                                    color[0], color[1], color[2], color[3],
+                                );
+                                init_temp(ui, id, color);
+
+                                let mut value = ui.data(|r| r.get_temp::<Color32>(id)).unwrap();
+                                ui.horizontal(|ui| {
+                                    ui.label(*field_name);
+                                    if ui.color_edit_button_srgba(&mut value).changed() {
+                                        ui.data_mut(|w| w.insert_temp::<Color32>(id, value));
+                                        let new_colors = value.to_array();
+                                        let mut new_fields = fields.clone();
+                                        new_fields[index] = Field::Color(field_name, new_colors);
+                                        world.set_component_fields(
+                                            component_name.clone(),
+                                            selected_entity.unwrap(),
+                                            new_fields,
+                                        );
+                                    }
+                                });
                             }
                             _ => {}
                         };
@@ -291,5 +343,15 @@ impl InspectorPanel {
             }
         }
         ui.separator();
+    }
+}
+
+fn generate_id(selected_entity: Option<Entity>, component_name: &String, index: usize) -> Id {
+    Id::new((selected_entity.unwrap().id, component_name, index))
+}
+
+fn init_temp<T: Clone + Send + Sync + 'static>(ui: &mut Ui, id: Id, value: T) {
+    if ui.data_mut(|w| w.get_temp::<T>(id)).is_none() {
+        ui.data_mut(|w| w.insert_temp::<T>(id, value));
     }
 }
