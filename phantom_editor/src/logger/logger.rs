@@ -14,7 +14,7 @@ pub struct Logger {
 
 impl Logger {
     pub fn create_log_file() -> Option<File> {
-        let log_file = dirs::cache()
+        let log_file = dirs::SystemDirs::cache()
             .map(|dir| {
                 std::fs::create_dir_all(&dir).ok();
                 dir.join("editor.log")

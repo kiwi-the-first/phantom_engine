@@ -235,13 +235,28 @@ impl SceneRenderer {
             if let Some(camera_entity) = world.query_with2::<Camera, Transform>().first() {
                 let camera = world.get_component::<Camera>(*camera_entity).unwrap();
                 let transform = world.get_component::<Transform>(*camera_entity).unwrap();
-                let left = transform.position.x - (viewport_size.x / 2.0) / camera.zoom;
-                let right = transform.position.x + (viewport_size.x / 2.0) / camera.zoom;
-                let bottom = transform.position.y - (viewport_size.y / 2.0) / camera.zoom;
-                let top = transform.position.y + (viewport_size.y / 2.0) / camera.zoom;
-                let near = -1000.0;
-                let far = 1000.0;
-                glam::Mat4::orthographic_rh(left, right, bottom, top, near, far)
+
+                let scale_x = viewport_size.x / camera.reference_resolution.x as f32;
+                let scale_y = viewport_size.y / camera.reference_resolution.y as f32;
+                let scale = scale_x.min(scale_y);
+
+                let half_width = (viewport_size.x / scale) / 2.0;
+                let half_height = (viewport_size.y / scale) / 2.0;
+
+                let projection = glam::Mat4::orthographic_rh(
+                    -half_width,
+                    half_width,
+                    -half_height,
+                    half_height,
+                    -1000.0,
+                    1000.0,
+                );
+
+                let (_, _, angle) = transform.rotation.to_euler(glam::EulerRot::XYZ);
+                let view = glam::Mat4::from_rotation_z(-angle)
+                    * glam::Mat4::from_translation(-transform.position);
+
+                projection * view
             } else {
                 glam::Mat4::IDENTITY
             };

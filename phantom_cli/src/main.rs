@@ -1,4 +1,3 @@
-use directories::ProjectDirs;
 use phantom_common::dirs;
 
 #[cfg(unix)]
@@ -25,7 +24,7 @@ fn main() -> Result<()> {
 
             // Create log file for editor output
 
-            let log_file = dirs::cache()
+            let log_file = dirs::SystemDirs::cache()
                 .map(|dir| {
                     std::fs::create_dir_all(&dir).ok();
                     dir.join("editor.log")

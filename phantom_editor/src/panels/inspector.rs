@@ -11,7 +11,7 @@ use phantom_core::{
     reflecton::fields::{self, Field},
 };
 
-use crate::{context::EditorContext, resources::ResourceKey};
+use crate::{context::EditorContext, panels::field_wigets::FieldContext, resources::ResourceKey};
 
 pub struct InspectorPanel {}
 
@@ -38,289 +38,32 @@ impl InspectorPanel {
                 // FOR EACH COMPONENT
                 for (component_name, fields) in components {
                     ui.label(RichText::new(&component_name).strong());
+                    let mut fctx = FieldContext {
+                        ui,
+                        world,
+                        component_name: &component_name,
+                        selected_entity: selected_entity.unwrap(),
+                        fields: &fields,
+                        index: 0,
+                    };
                     for (index, field) in fields.iter().enumerate() {
+                        fctx.index = index;
                         match field {
-                            // This field is for the built in Name Component
-                            // it removes the field_name from display
-                            Field::NameString(field_name, string) => {
-                                let id =
-                                    Id::new((selected_entity.unwrap().id, &component_name, index));
-                                if ui.data_mut(|w| w.get_temp::<String>(id)).is_none() {
-                                    //insert feild name
-                                    ui.data_mut(|w| w.insert_temp::<&'static str>(id, field_name));
-                                    //insert data
-                                    ui.data_mut(|w| w.insert_temp::<String>(id, string.clone()));
-                                }
-                                let mut text = ui.data_mut(|w| w.get_temp::<String>(id)).unwrap();
-
-                                let response = ui.text_edit_singleline(&mut text);
-                                ui.data_mut(|w| w.insert_temp(id, text));
-                                if response.lost_focus() {
-                                    let mut new_fields = fields.clone();
-                                    new_fields[index] = Field::NameString(
-                                        ui.data_mut(|w| w.get_temp::<&'static str>(id).unwrap()),
-                                        ui.data_mut(|w| w.get_temp::<String>(id)).unwrap(),
-                                    );
-                                    world.set_component_fields(
-                                        component_name.clone(),
-                                        selected_entity.unwrap(),
-                                        new_fields.clone(),
-                                    );
-                                    ui.data_mut(|w| {
-                                        w.remove::<String>(id);
-                                        w.remove::<&'static str>(id);
-                                    });
-                                };
+                            Field::F32(name, val) => fctx.show_f32(name, *val),
+                            Field::Vec3(name, val) => fctx.show_vec3(name, *val),
+                            Field::UVec2(name, val) => fctx.show_uvec2(name, *val),
+                            Field::NameString(name, val) => {
+                                fctx.show_name_string(name, val.clone())
                             }
-                            Field::String(field_name, string) => {
-                                let id =
-                                    Id::new((selected_entity.unwrap().id, &component_name, index));
-                                if ui.data_mut(|w| w.get_temp::<String>(id)).is_none() {
-                                    //insert feild name
-                                    ui.data_mut(|w| w.insert_temp::<&'static str>(id, field_name));
-                                    //insert data
-                                    ui.data_mut(|w| w.insert_temp::<String>(id, string.clone()));
-                                }
-                                let mut text = ui.data_mut(|w| w.get_temp::<String>(id)).unwrap();
-                                let mut response = None;
-                                ui.horizontal(|ui| {
-                                    ui.label(*field_name);
-                                    response = Some(ui.text_edit_singleline(&mut text));
-                                });
-                                ui.data_mut(|w| w.insert_temp(id, text));
-                                if response.is_some_and(|r| r.lost_focus()) {
-                                    let mut new_fields = fields.clone();
-                                    new_fields[index] = Field::String(
-                                        ui.data_mut(|w| w.get_temp::<&'static str>(id).unwrap()),
-                                        ui.data_mut(|w| w.get_temp::<String>(id)).unwrap(),
-                                    );
-                                    trace!(
-                                        "set {} fields",
-                                        ui.data_mut(|w| w.get_temp::<String>(id)).unwrap()
-                                    );
-                                    world.set_component_fields(
-                                        component_name.clone(),
-                                        selected_entity.unwrap(),
-                                        new_fields.clone(),
-                                    );
-                                    ui.data_mut(|w| {
-                                        w.remove::<String>(id);
-                                        w.remove::<&'static str>(id);
-                                    });
-                                };
-                            }
-                            Field::Vec3(field_name, vec3) => {
-                                let mut x = vec3.x;
-                                let mut y = vec3.y;
-                                let mut z = vec3.z;
-
-                                ui.horizontal(|ui| {
-                                    ui.label(*field_name);
-                                    if ui
-                                        .add(egui::DragValue::new(&mut x).prefix("X: ").speed(0.1))
-                                        .changed()
-                                    {
-                                        let new_vec = Vec3 { x, y, z };
-                                        let mut new_fields = fields.clone();
-                                        new_fields[index] = Field::Vec3(field_name, new_vec);
-                                        world.set_component_fields(
-                                            component_name.clone(),
-                                            selected_entity.unwrap(),
-                                            new_fields,
-                                        );
-                                    };
-                                    if ui
-                                        .add(egui::DragValue::new(&mut y).prefix("Y: ").speed(0.1))
-                                        .changed()
-                                    {
-                                        let new_vec = Vec3 { x, y, z };
-                                        let mut new_fields = fields.clone();
-                                        new_fields[index] = Field::Vec3(field_name, new_vec);
-                                        world.set_component_fields(
-                                            component_name.clone(),
-                                            selected_entity.unwrap(),
-                                            new_fields,
-                                        );
-                                    };
-                                    if ui
-                                        .add(egui::DragValue::new(&mut z).prefix("Z: ").speed(0.1))
-                                        .changed()
-                                    {
-                                        let new_vec = Vec3 { x, y, z };
-                                        let mut new_fields = fields.clone();
-                                        new_fields[index] = Field::Vec3(field_name, new_vec);
-                                        world.set_component_fields(
-                                            component_name.clone(),
-                                            selected_entity.unwrap(),
-                                            new_fields,
-                                        );
-                                    };
-                                });
-                            }
-                            // This field is for the built in Transform Component
-                            // it converts the Quat into Euler for modification
-                            Field::TransQuat(field_name, quat) => {
-                                let id =
-                                    Id::new((selected_entity.unwrap().id, &component_name, index));
-
-                                let euler = quat.to_euler(glam::EulerRot::XYZ);
-                                if ui.data_mut(|w| w.get_temp::<(f32, f32, f32)>(id)).is_none() {
-                                    ui.data_mut(|w| w.insert_temp::<&'static str>(id, field_name));
-                                    ui.data_mut(|w| w.insert_temp::<(f32, f32, f32)>(id, euler));
-                                };
-
-                                let vec3 = Vec3::new(
-                                    ui.data(|r| r.get_temp::<(f32, f32, f32)>(id))
-                                        .unwrap()
-                                        .0
-                                        .to_degrees(),
-                                    ui.data(|r| r.get_temp::<(f32, f32, f32)>(id))
-                                        .unwrap()
-                                        .1
-                                        .to_degrees(),
-                                    ui.data(|r| r.get_temp::<(f32, f32, f32)>(id))
-                                        .unwrap()
-                                        .2
-                                        .to_degrees(),
-                                );
-                                let mut x = vec3.x;
-                                let mut y = vec3.y;
-                                let mut z = vec3.z;
-
-                                ui.horizontal(|ui| {
-                                    ui.label(*field_name);
-                                    if ui
-                                        .add(egui::DragValue::new(&mut x).prefix("X: ").speed(0.1))
-                                        .changed()
-                                    {
-                                        let new_quat =
-                                            Quat::from_euler(glam::EulerRot::XYZ, x, y, z);
-                                        let mut new_fields = fields.clone();
-                                        new_fields[index] = Field::TransQuat(field_name, new_quat);
-                                        world.set_component_fields(
-                                            component_name.clone(),
-                                            selected_entity.unwrap(),
-                                            new_fields,
-                                        );
-                                        ui.data_mut(|w| {
-                                            w.insert_temp::<(f32, f32, f32)>(
-                                                id,
-                                                (x.to_radians(), y.to_radians(), z.to_radians()),
-                                            )
-                                        });
-                                    };
-                                    if ui
-                                        .add(
-                                            egui::DragValue::new(&mut y)
-                                                .prefix("Y: ")
-                                                .speed(0.1)
-                                                .range(-360..=360),
-                                        )
-                                        .changed()
-                                    {
-                                        let new_quat =
-                                            Quat::from_euler(glam::EulerRot::XYZ, x, y, z);
-                                        let mut new_fields = fields.clone();
-                                        new_fields[index] = Field::TransQuat(field_name, new_quat);
-                                        world.set_component_fields(
-                                            component_name.clone(),
-                                            selected_entity.unwrap(),
-                                            new_fields,
-                                        );
-                                        ui.data_mut(|w| {
-                                            w.insert_temp::<(f32, f32, f32)>(
-                                                id,
-                                                (x.to_radians(), y.to_radians(), z.to_radians()),
-                                            )
-                                        });
-                                    };
-                                    if ui
-                                        .add(
-                                            egui::DragValue::new(&mut z)
-                                                .prefix("Z: ")
-                                                .speed(0.1)
-                                                .range(-360..=360),
-                                        )
-                                        .changed()
-                                    {
-                                        let new_quat =
-                                            Quat::from_euler(glam::EulerRot::XYZ, x, y, z);
-                                        let mut new_fields = fields.clone();
-                                        new_fields[index] = Field::TransQuat(field_name, new_quat);
-                                        world.set_component_fields(
-                                            component_name.clone(),
-                                            selected_entity.unwrap(),
-                                            new_fields,
-                                        );
-                                        ui.data_mut(|w| {
-                                            w.insert_temp::<(f32, f32, f32)>(
-                                                id,
-                                                (x.to_radians(), y.to_radians(), z.to_radians()),
-                                            )
-                                        });
-                                    };
-                                });
-                            }
-                            Field::Quat(field_name, quat) => {
-                                ui.label(format!("{}", quat));
-                            }
-                            Field::F32(field_name, float32) => {
-                                let id =
-                                    Id::new((selected_entity.unwrap().id, &component_name, index));
-                                if ui.data_mut(|w| w.get_temp::<f32>(id)).is_none() {
-                                    // insert data
-                                    ui.data_mut(|w| w.insert_temp::<f32>(id, float32.clone()));
-                                }
-
-                                let mut value = ui.data_mut(|w| w.get_temp::<f32>(id)).unwrap();
-                                ui.horizontal(|ui| {
-                                    ui.label(*field_name);
-                                    if ui
-                                        .add(egui::DragValue::new(&mut value).prefix("").speed(0.1))
-                                        .changed()
-                                    {
-                                        ui.data_mut(|w| w.insert_temp::<f32>(id, value));
-                                        let mut new_fields = fields.clone();
-                                        new_fields[index] = Field::F32(
-                                            field_name,
-                                            ui.data(|r| r.get_temp::<f32>(id)).unwrap(),
-                                        );
-                                        world.set_component_fields(
-                                            component_name.clone(),
-                                            selected_entity.unwrap(),
-                                            new_fields,
-                                        );
-                                    }
-                                });
-                            }
-                            Field::Color(field_name, color) => {
-                                let id = generate_id(selected_entity, &component_name, index);
-                                let color = Color32::from_rgba_unmultiplied(
-                                    color[0], color[1], color[2], color[3],
-                                );
-                                init_temp(ui, id, color);
-
-                                let mut value = ui.data(|r| r.get_temp::<Color32>(id)).unwrap();
-                                ui.horizontal(|ui| {
-                                    ui.label(*field_name);
-                                    if ui.color_edit_button_srgba(&mut value).changed() {
-                                        ui.data_mut(|w| w.insert_temp::<Color32>(id, value));
-                                        let new_colors = value.to_array();
-                                        let mut new_fields = fields.clone();
-                                        new_fields[index] = Field::Color(field_name, new_colors);
-                                        world.set_component_fields(
-                                            component_name.clone(),
-                                            selected_entity.unwrap(),
-                                            new_fields,
-                                        );
-                                    }
-                                });
-                            }
-                            _ => {}
-                        };
+                            Field::String(name, val) => fctx.show_string(name, val.clone()),
+                            Field::TransQuat(name, val) => fctx.show_trans_quat(name, *val),
+                            Field::Color(name, val) => fctx.show_color(name, *val),
+                            _ => (),
+                        }
                     }
                     ui.separator();
                 }
+                // Add Component Button
                 let registered_components = component_registry::get_registered_component_names();
                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
                     let response = ui

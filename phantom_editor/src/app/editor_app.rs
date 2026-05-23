@@ -2,12 +2,10 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
-use egui::Context;
 use egui::Id;
 
 use egui::Key;
 use egui::Modifiers;
-use egui::Ui;
 use egui::Vec2;
 use egui::include_image;
 use egui_dock::DockState;
@@ -17,11 +15,8 @@ use egui_dock::SurfaceIndex;
 use egui_wgpu::ScreenDescriptor;
 use egui_wgpu::wgpu;
 use egui_wgpu::wgpu::TextureView;
-use egui_wgpu::wgpu::wgc::id::TextureId;
 use egui_wgpu::wgpu::wgt::TextureViewDescriptor;
 use phantom_common::dirs;
-use phantom_runtime::asset_manager::asset_manager;
-use phantom_runtime::asset_manager::asset_manager::AssetManager;
 use phantom_runtime::renderer::scene_renderer::SceneRenderer;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
@@ -36,7 +31,6 @@ use phantom_runtime::renderer::state::State;
 
 use crate::actions::Actions;
 use crate::context::EditorContext;
-use crate::context::editor_context;
 use crate::egui::egui_renderer::EguiRenderer;
 use crate::logger::Logger;
 use crate::menus::file::FileMenu;
@@ -295,7 +289,7 @@ impl EditorApp {
     }
 
     pub fn run(editor_context: EditorContext) -> anyhow::Result<()> {
-        if let Some(file) = Logger::create_log_file() {
+        if let Some(_file) = Logger::create_log_file() {
             env_logger::Builder::new()
                 .target(env_logger::Target::Stdout)
                 //.target(env_logger::Target::Pipe(Box::new(file)))
@@ -305,7 +299,7 @@ impl EditorApp {
         } else {
             log::trace!(
                 "FAILED TO CREATE LOG FILE AT {}",
-                dirs::cache().unwrap().to_str().unwrap()
+                dirs::SystemDirs::cache().unwrap().to_str().unwrap()
             );
             env_logger::init();
         }

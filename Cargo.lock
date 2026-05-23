@@ -2442,6 +2442,13 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "phantom_build"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "log",
+ "phantom_common",
+ "phantom_core",
+ "phantom_project",
+]
 
 [[package]]
 name = "phantom_cli"
@@ -2490,6 +2497,7 @@ dependencies = [
  "image",
  "log",
  "parking_lot",
+ "phantom_build",
  "phantom_common",
  "phantom_core",
  "phantom_project",
@@ -2533,11 +2541,13 @@ name = "phantom_runtime"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "bincode",
  "bytemuck",
  "env_logger",
  "glam",
  "image",
  "log",
+ "phantom_common",
  "phantom_core",
  "pollster",
  "wgpu",

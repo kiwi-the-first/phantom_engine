@@ -4,6 +4,7 @@ use std::{
 };
 
 use egui::{Id, Ui};
+use phantom_build::BuildSystem;
 use phantom_project::project_manager::project_manager::ProjectManager;
 
 use crate::{context::EditorContext, resources::ResourceKey};
@@ -27,6 +28,12 @@ impl FileMenu {
                     log::error!("FAILED TO SAVE PROJECT! {e}");
                 }
             };
+            if ui.button("Build Game").clicked() {
+                let path = &ectx_lock.project_path;
+                if let Err(e) = BuildSystem::build(path.clone()) {
+                    log::error!("FAILED TO BUILD PROJECT {e}");
+                }
+            }
         };
     }
 }

@@ -1,6 +1,8 @@
 pub mod panels;
 pub use panels::Panels;
 
+pub mod field_wigets;
+
 pub mod panel_viewer;
 pub use panel_viewer::PanelViewer;
 

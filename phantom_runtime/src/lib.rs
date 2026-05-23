@@ -1,6 +1,7 @@
 pub mod app;
 pub use app::App;
 pub mod asset_manager;
+pub mod game_loader;
 pub mod renderer;
 
 // use crate::app::App;

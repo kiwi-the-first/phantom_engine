@@ -13,6 +13,7 @@ use phantom_macros::component;
 pub struct Camera {
     pub zoom: f32,
     pub background_color: [u8; 4],
+    pub reference_resolution: UVec2,
 }
 
 impl Reflection for Camera {
@@ -20,6 +21,7 @@ impl Reflection for Camera {
         vec![
             Field::F32("Zoom", self.zoom),
             Field::Color("Background Color", self.background_color),
+            Field::UVec2("Ref Resolution", self.reference_resolution),
         ]
     }
     fn set_feilds(&mut self, fields: Vec<Field>) {
@@ -29,6 +31,12 @@ impl Reflection for Camera {
         };
         match fields.get(1).unwrap() {
             Field::Color(_name, background_color) => self.background_color = *background_color,
+            _ => {}
+        }
+        match fields.get(2).unwrap() {
+            Field::UVec2(_name, reference_resolution) => {
+                self.reference_resolution = *reference_resolution
+            }
             _ => {}
         }
     }
@@ -62,6 +70,7 @@ impl Default for Camera {
         Self {
             zoom: 1.0,
             background_color: [3, 4, 12, 255],
+            reference_resolution: UVec2 { x: 1280, y: 720 },
         }
     }
 }

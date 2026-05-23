@@ -1,3 +1,37 @@
 [workspace]
 resolver = "3"
 members = [ "phantom_build", "phantom_cli", "phantom_common","phantom_core", "phantom_editor", "phantom_macros", "phantom_player", "phantom_project", "phantom_runtime"]
+
+[workspace.dependencies]
+# internal
+phantom_core    = { path = "phantom_core" }
+phantom_common  = { path = "phantom_common" }
+phantom_project = { path = "phantom_project" }
+phantom_runtime = { path = "phantom_runtime" }
+phantom_macros  = { path = "phantom_macros" }
+phantom_build = { path = "phantom_build"}
+
+# external
+anyhow       = "1.0.102"
+bincode      = "1.3"
+bytemuck     = "1.25.0"
+clap         = { version = "4.6.0", features = ["derive"] }
+ctor         = "0.10.1"
+directories  = "6.0.0"
+egui         = { version = "0.34.1", features = ["default"] }
+egui-wgpu    = "0.34.1"
+egui-winit   = "0.34.1"
+egui_dock    = { version = "0.19.1", features = ["serde"] }
+egui_extras  = { version = "0.34.1", features = ["image"] }
+env_logger   = "0.11.10"
+glam         = { version = "0.32.1", features = ["serde"] }
+image        = { version = "0.25.10", features = ["png", "jpeg"] }
+log          = "0.4.29"
+parking_lot  = "0.12.5"
+pollster     = "0.3"
+quote        = "1.0.45"
+serde        = { version = "1.0", features = ["derive"] }
+serde_json   = "1.0.149"
+syn          = "2.0.117"
+wgpu         = "29.0"
+winit        = "0.30"

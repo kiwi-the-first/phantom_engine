@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use glam::Vec2;
+use phantom_common::dirs::dirs::PlayerDirs;
 use phantom_core::ecs::World;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
@@ -12,6 +13,7 @@ use winit::window::{Window, WindowId};
 use log::*;
 
 use crate::asset_manager::asset_manager::AssetManager;
+use crate::game_loader::game_loader::GameLoader;
 use crate::renderer::scene_renderer::SceneRenderer;
 use crate::renderer::state::State;
 
@@ -19,13 +21,15 @@ use crate::renderer::state::State;
 pub struct App {
     state: Option<State>,
     scene_renderer: Option<SceneRenderer>,
-    asset_manager: Option<AssetManager>,
+    world: Option<World>,
 }
 
 impl ApplicationHandler<State> for App {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
         let window_attributes = Window::default_attributes();
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
+        let state = pollster::block_on(State::new(window.clone())).unwrap();
+        self.state = Some(state);
 
         self.scene_renderer = Some(SceneRenderer::new(
             &self.state.as_ref().unwrap().device,
@@ -33,9 +37,19 @@ impl ApplicationHandler<State> for App {
             self.state.as_ref().unwrap().surface_format(),
         ));
 
-        // TODO LOAD FROM KNOWN PATHS AFTER BUILD
-        // self.asset_manager = Some(AssetManager::new());
-        // self.asset_manager.unwrap().load_texture_assets(world);
+        match GameLoader::load_world() {
+            Ok(world) => self.world = Some(world),
+            Err(e) => log::error!("FAILED TO LOAD WORLD FILE! {e}"),
+        }
+
+        let mut asset_manager = AssetManager::new();
+        if let Some(world) = self.world.as_ref() {
+            asset_manager.load_sprite_assets(&world, &PlayerDirs::data());
+        }
+
+        let state = self.state.as_mut().unwrap();
+        let scene_renderer = self.scene_renderer.as_mut().unwrap();
+        scene_renderer.upload_textures(&state.device, &state.queue, &asset_manager.textures);
     }
     #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
@@ -102,15 +116,17 @@ impl ApplicationHandler<State> for App {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
+        if let Some(world) = &self.world {
+            scene_renderer.render(
+                &state.device,
+                &state.queue,
+                &mut encoder,
+                &view,
+                world,
+                Vec2::new(state.config.width as f32, state.config.height as f32),
+            );
+        }
 
-        scene_renderer.render(
-            &state.device,
-            &state.queue,
-            &mut encoder,
-            &view,
-            &World::new(),
-            Vec2::new(state.config.width as f32, state.config.height as f32),
-        );
         state.queue.submit(std::iter::once(encoder.finish()));
         output.present();
     }
@@ -121,7 +137,7 @@ impl App {
         Self {
             state: None,
             scene_renderer: None,
-            asset_manager: None,
+            world: None,
         }
     }
 
