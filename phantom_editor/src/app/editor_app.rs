@@ -19,6 +19,7 @@ use egui_wgpu::wgpu::TextureView;
 use egui_wgpu::wgpu::wgt::TextureViewDescriptor;
 use phantom_build::BuildSystem;
 use phantom_common::dirs;
+use phantom_core::input::input::ViewportInfo;
 use phantom_runtime::renderer::scene_renderer::SceneRenderer;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
@@ -253,11 +254,18 @@ impl ApplicationHandler<State> for EditorApp {
         self.handle_redraw();
 
         if let Some(egui_renderer) = &mut self.egui_renderer {
+            let viewport_info = egui_renderer
+                .context()
+                .data(|d| d.get_temp::<ViewportInfo>(Id::new(ResourceKey::ViewportInfo)));
+
             if let Some(ectx) = &egui_renderer.context().data_mut(|w| {
                 w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
             }) {
                 let mut ectx_lock = ectx.lock().unwrap();
                 let input_system = &mut ectx_lock.script_ctx.input;
+                if let Some(info) = viewport_info {
+                    input_system.set_viewport(info);
+                }
                 input_system.end_frame();
             }
         }
@@ -688,12 +696,18 @@ impl EditorApp {
             let egui_renderer = self.egui_renderer.as_ref().unwrap();
             let ctx = egui_renderer.context();
             (
-                ctx.data(|r| r.get_temp::<egui::Vec2>(Id::new(ResourceKey::ViewportSize))),
+                ctx.data(|r| r.get_temp::<ViewportInfo>(Id::new(ResourceKey::ViewportInfo))),
                 ctx.data(|r| r.get_temp::<egui::TextureId>(Id::new(ResourceKey::ViewportTexture))),
             )
         };
         if let (Some(viewport_size), Some(texture_id)) = (viewport_size, texture_id) {
-            self.handle_resize(viewport_size, texture_id);
+            self.handle_resize(
+                egui::Vec2 {
+                    x: viewport_size.size.x,
+                    y: viewport_size.size.y,
+                },
+                texture_id,
+            );
         }
 
         match view_menu_action {

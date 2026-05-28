@@ -218,16 +218,31 @@ pub fn script(_attr: TokenStream, item: TokenStream) -> TokenStream {
         fn #start_all_fn(world: &mut ::phantom_core::ecs::World, ctx: &::phantom_core::scripting::ScriptContext) {
             let entities = world.query_with::<#struct_name>();
             for entity in entities {
-                let script = world.get_component_mut::<#struct_name>(entity).unwrap() as *mut #struct_name;
-                unsafe { (*script).start(entity, world, ctx); }
+                if let Some(script) = world.get_component_mut::<#struct_name>(entity) {
+                    let script = script as *mut #struct_name;
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(||{
+                        unsafe { (*script).start(entity, world, ctx); }
+                    }));
+                    if let Err(_) = result {
+                        eprintln!("[Phantom] Script panic in {}", stringify!(#struct_name));
+                    }
+                }
             }
         }
 
         fn #update_all_fn(world: &mut ::phantom_core::ecs::World, ctx: &::phantom_core::scripting::ScriptContext)  {
             let entities = world.query_with::<#struct_name>();
             for entity in entities {
-                let script = world.get_component_mut::<#struct_name>(entity).unwrap() as *mut #struct_name;
-                unsafe { (*script).update(entity, world, ctx); }
+                if let Some(script) = world.get_component_mut::<#struct_name>(entity) {
+                    let script = script as *mut #struct_name;
+                    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(||{
+                        unsafe { (*script).update(entity, world, ctx); }
+                    }));
+                    if let Err(_) = result {
+                        eprintln!("[Phantom] Script panic in {}", stringify!(#struct_name));
+                    }
+                }
+
             }
         }
 

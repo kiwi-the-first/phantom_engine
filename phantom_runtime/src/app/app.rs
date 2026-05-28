@@ -7,6 +7,7 @@ use libloading::Library;
 use phantom_common::dirs::dirs::PlayerDirs;
 use phantom_core::ecs::World;
 use phantom_core::input::Input;
+use phantom_core::input::input::ViewportInfo;
 use phantom_core::scripting::ScriptContext;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
@@ -111,6 +112,11 @@ impl ApplicationHandler<State> for App {
                 // can render here instead.
                 //self.window.as_ref().unwrap().request_redraw();
             }
+            WindowEvent::Resized(physical_size) => {
+                if let Some(state) = &mut self.state {
+                    state.resize(physical_size.width, physical_size.height);
+                }
+            }
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
@@ -169,7 +175,33 @@ impl ApplicationHandler<State> for App {
         );
 
         if let Some(script_ctx) = &mut self.script_context {
+            let window_size = Vec2::new(state.config.width as f32, state.config.height as f32);
+
+            let (camera_pos, zoom, ref_res) = self
+                .world
+                .as_ref()
+                .and_then(|world| {
+                    use phantom_core::ecs::components::{Transform, camera::Camera};
+                    let cams = world.query_with::<Camera>();
+                    let cam_entity = cams.first()?;
+                    let cam = world.get_component::<Camera>(*cam_entity)?;
+                    let transform = world.get_component::<Transform>(*cam_entity)?;
+                    Some((
+                        Vec2::new(transform.position.x, transform.position.y),
+                        cam.zoom,
+                        cam.reference_resolution.as_vec2(),
+                    ))
+                })
+                .unwrap_or((Vec2::ZERO, 1.0, Vec2::new(1280.0, 720.0)));
+
             let input_system = &mut script_ctx.input;
+            input_system.set_viewport(ViewportInfo {
+                size: window_size,
+                offset: Vec2::ZERO,
+                camera_pos,
+                zoom,
+                reference_resolution: ref_res,
+            });
             input_system.end_frame();
         }
     }

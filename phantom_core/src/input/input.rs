@@ -18,32 +18,56 @@ pub struct Input {
     mouse_released: HashSet<MouseButton>,
     mouse_delta: Vec2,
     scroll_delta: Vec2,
+
+    //Editor Viewport
+    viewport: Option<ViewportInfo>,
+}
+
+#[derive(Clone, Copy)]
+pub struct ViewportInfo {
+    pub size: Vec2,
+    pub offset: Vec2,
+    pub camera_pos: Vec2,
+    pub zoom: f32,
+    pub reference_resolution: Vec2,
 }
 
 impl Input {
-    pub fn is_down(&self, key: KeyCode) -> bool {
+    pub fn is_key_down(&self, key: KeyCode) -> bool {
         self.keys_held.contains(&key)
     }
 
-    pub fn just_pressed(&self, key: KeyCode) -> bool {
+    pub fn key_pressed(&self, key: KeyCode) -> bool {
         self.keys_pressed.contains(&key)
     }
 
-    pub fn just_released(&self, key: KeyCode) -> bool {
+    pub fn key_released(&self, key: KeyCode) -> bool {
         self.keys_released.contains(&key)
     }
 
     pub fn is_mouse_down(&self, button: MouseButton) -> bool {
         self.mouse_held.contains(&button)
     }
-    pub fn mouse_just_pressed(&self, button: MouseButton) -> bool {
+    pub fn mouse_pressed(&self, button: MouseButton) -> bool {
         self.mouse_pressed.contains(&button)
     }
-    pub fn mouse_just_released(&self, button: MouseButton) -> bool {
+    pub fn mouse_released(&self, button: MouseButton) -> bool {
         self.mouse_released.contains(&button)
     }
     pub fn mouse_pos(&self) -> Vec2 {
-        self.mouse_pos
+        if let Some(viewport) = &self.viewport {
+            let scale_x = viewport.size.x / viewport.reference_resolution.x * viewport.zoom;
+            let scale_y = viewport.size.y / viewport.reference_resolution.y * viewport.zoom;
+            let scale = scale_x.min(scale_y);
+            let screen = self.mouse_pos - viewport.offset;
+            let ndc = Vec2::new(
+                screen.x - viewport.size.x / 2.0,
+                -(screen.y - viewport.size.y / 2.0),
+            );
+            ndc / scale + viewport.camera_pos
+        } else {
+            self.mouse_pos
+        }
     }
     pub fn mouse_delta(&self) -> Vec2 {
         self.mouse_delta
@@ -103,6 +127,10 @@ impl Input {
             }
             _ => {}
         }
+    }
+
+    pub fn set_viewport(&mut self, info: ViewportInfo) {
+        self.viewport = Some(info);
     }
 
     pub fn end_frame(&mut self) {

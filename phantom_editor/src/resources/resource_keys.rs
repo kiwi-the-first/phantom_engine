@@ -3,7 +3,7 @@ pub enum ResourceKey {
     Actions,
     EditorContext,
     ViewportTexture,
-    ViewportSize,
+    ViewportInfo,
     AvailableWorkspaces,
     ActiveWorkspaceName,
     ActiveWorkspaceBuiltInType,

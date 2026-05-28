@@ -1,9 +1,9 @@
 use std::collections::HashMap;
 
 use glam::Vec2;
-use phantom_core::ecs::World;
 use phantom_core::ecs::components::camera::{self, Camera};
 use phantom_core::ecs::components::{Sprite, Transform};
+use phantom_core::ecs::{Entity, World};
 use wgpu::util::DeviceExt;
 
 use crate::asset_manager::asset_types::texture::Texture;
@@ -145,8 +145,19 @@ impl SceneRenderer {
         }
     }
 
-    pub fn build_sprite_verticies(&self, world: &World) -> Vec<Vertex> {
-        let entities = world.query_with2::<Sprite, Transform>();
+    pub fn build_sprite_verticies(&self, world: &World) -> (Vec<Vertex>, Vec<Entity>) {
+        let mut entities = world.query_with2::<Sprite, Transform>();
+        entities.sort_by(|a, b| {
+            let za = world
+                .get_component::<Transform>(*a)
+                .map(|t| t.position.z)
+                .unwrap_or(0.0);
+            let zb = world
+                .get_component::<Transform>(*b)
+                .map(|t| t.position.z)
+                .unwrap_or(0.0);
+            za.partial_cmp(&zb).unwrap_or(std::cmp::Ordering::Equal)
+        });
         let vertices = entities
             .iter()
             .flat_map(|entity| {
@@ -217,7 +228,7 @@ impl SceneRenderer {
                 vertices
             })
             .collect();
-        vertices
+        (vertices, entities)
     }
 
     pub fn render(
@@ -229,15 +240,15 @@ impl SceneRenderer {
         world: &World,
         viewport_size: Vec2,
     ) -> anyhow::Result<()> {
-        let verticies = self.build_sprite_verticies(world);
+        let (verticies, entities) = self.build_sprite_verticies(world);
 
         let camera_matrix =
             if let Some(camera_entity) = world.query_with2::<Camera, Transform>().first() {
                 let camera = world.get_component::<Camera>(*camera_entity).unwrap();
                 let transform = world.get_component::<Transform>(*camera_entity).unwrap();
 
-                let scale_x = viewport_size.x / camera.reference_resolution.x as f32;
-                let scale_y = viewport_size.y / camera.reference_resolution.y as f32;
+                let scale_x = viewport_size.x / camera.reference_resolution.x as f32 * camera.zoom;
+                let scale_y = viewport_size.y / camera.reference_resolution.y as f32 * camera.zoom;
                 let scale = scale_x.min(scale_y);
 
                 let half_width = (viewport_size.x / scale) / 2.0;
@@ -303,7 +314,6 @@ impl SceneRenderer {
                     contents: bytemuck::cast_slice(&verticies),
                     usage: wgpu::BufferUsages::VERTEX,
                 });
-                let entities = world.query_with2::<Sprite, Transform>();
                 render_pass.set_pipeline(&self.render_pipeline);
                 render_pass.set_vertex_buffer(0, vertex_buffer.slice(..));
                 render_pass.set_bind_group(1, &self.camera_bind_group, &[]);
