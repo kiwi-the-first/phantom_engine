@@ -20,4 +20,43 @@ impl GameLoader {
         let world = World::deserialize(&world_bytes);
         Ok(world)
     }
+
+    pub fn load_dylib() -> anyhow::Result<libloading::Library> {
+        let data_path = PlayerDirs::data();
+        let dylib_path = std::fs::read_dir(&data_path)?
+            .filter_map(|entry| entry.ok())
+            .find(|entry| {
+                entry
+                    .path()
+                    .extension()
+                    .map_or(false, |ext| ext == "so" || ext == "dll")
+            })
+            .map(|entry| entry.path())
+            .ok_or(anyhow::anyhow!("no dylib found in data/"))?;
+
+        let lib = unsafe { libloading::Library::new(dylib_path)? };
+        Ok(lib)
+    }
+
+    pub fn init_dylib(lib: &libloading::Library) -> anyhow::Result<()> {
+        use phantom_core::ecs::component_registry::get_component_registry_ptr;
+        use phantom_core::scripting::script_registry::get_script_registry_ptr;
+
+        log::trace!("GameLoader::init_dylib() starting");
+
+        unsafe {
+            let phantom_init: libloading::Symbol<unsafe extern "C" fn(*mut (), *mut ())> =
+                lib.get(b"phantom_init")?;
+
+            log::trace!("Calling phantom_init with registry pointers");
+            phantom_init(
+                get_component_registry_ptr() as *mut (),
+                get_script_registry_ptr() as *mut (),
+            );
+            log::trace!("phantom_init completed");
+        }
+
+        log::trace!("GameLoader::init_dylib() complete");
+        Ok(())
+    }
 }

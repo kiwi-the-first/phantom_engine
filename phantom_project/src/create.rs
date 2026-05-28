@@ -13,6 +13,26 @@ pub fn create_project(name: String, path: PathBuf) -> anyhow::Result<()> {
         .args(["new", "--lib", path.to_str().unwrap()])
         .status()?;
 
+    // Write Cargo.toml with phantom_core dependency and cdylib
+    let engine_path = match std::env::var("PHANTOM_ENGINE_PATH") {
+        Ok(p) => p,
+        Err(_) => {
+            let _ = std::fs::remove_dir_all(&path);
+            anyhow::bail!("PHANTOM_ENGINE_PATH environment variable not set");
+        }
+    };
+    let cargo_toml = format!(
+        "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nphantom_core = {{ path = \"{}/phantom_core\" }}\n\n[lib]\ncrate-type = [\"cdylib\"]\n",
+        name, engine_path
+    );
+    std::fs::write(path.join("Cargo.toml"), cargo_toml)?;
+
+    // Write default lib.rs
+    std::fs::write(
+        path.join("src").join("lib.rs"),
+        "use phantom_core::phantom_macros::phantom_register;\n\nphantom_register!();\n",
+    )?;
+
     //Create World File and Folder
     let mut world = World::new();
 

@@ -1,6 +1,9 @@
-use crate::{ecs::World, scripting::Context};
+use crate::{
+    ecs::{Entity, World, entity},
+    scripting::ScriptContext,
+};
 
 pub trait Script {
-    fn start(&mut self, world: &mut World, ctx: &mut Context) {}
-    fn update(&mut self, world: &mut World, ctx: &mut Context) {}
+    fn start(&mut self, entity: Entity, world: &mut World, ctx: &ScriptContext) {}
+    fn update(&mut self, entity: Entity, world: &mut World, ctx: &ScriptContext) {}
 }

@@ -4,13 +4,15 @@ version = "0.1.0"
 edition = "2024"
 
 [lib]
-crate-type = ["rlib", "dylib"]
+crate-type = ["rlib", "cdylib"]
 
 [dependencies]
-phantom_macros = { path = "../phantom_macros"}
-glam = { version = "0.32.1", features = ["serde"] }
-directories = "6.0.0"
-log = "0.4.29"
-serde = { version = "1.0", features = ["derive"] }
-bincode = "1.3"
-ctor = "0.10.1"
+phantom_macros = { workspace = true }
+glam           = { workspace = true }
+directories    = { workspace = true }
+log            = { workspace = true }
+serde          = { workspace = true }
+bincode        = { workspace = true }
+serde_json     = { workspace = true }
+ctor           = { workspace = true }
+winit          = { workspace = true }

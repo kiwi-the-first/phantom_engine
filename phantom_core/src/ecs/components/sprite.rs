@@ -5,7 +5,7 @@ use crate::ecs::Entity;
 use crate::ecs::SparseSet;
 use crate::ecs::World;
 use crate::ecs::component::Component;
-use crate::ecs::entity;
+use crate::ecs::component_registry::ComponentEntry;
 use crate::reflecton::Reflection;
 use crate::reflecton::fields::Field;
 
@@ -36,13 +36,12 @@ impl Component for Sprite {
 fn __register_sprite() {
     crate::ecs::component_registry::register_component(
         "Sprite",
-        __deserialize_sprite,
-        __add_default_sprite,
+        ComponentEntry(__deserialize_sprite, __add_default_sprite, true),
     );
 }
 
 fn __deserialize_sprite(data: &[u8]) -> Box<dyn AnyStorage> {
-    Box::new(bincode::deserialize::<SparseSet<Sprite>>(data).unwrap())
+    Box::new(serde_json::from_slice::<SparseSet<Sprite>>(data).unwrap())
 }
 
 fn __add_default_sprite(entity: Entity) -> Box<dyn FnOnce(&mut World)> {

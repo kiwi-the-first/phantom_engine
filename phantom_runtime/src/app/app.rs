@@ -1,9 +1,13 @@
 use std::sync::Arc;
 
 use anyhow::Result;
+use env_logger::init;
 use glam::Vec2;
+use libloading::Library;
 use phantom_common::dirs::dirs::PlayerDirs;
 use phantom_core::ecs::World;
+use phantom_core::input::Input;
+use phantom_core::scripting::ScriptContext;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -22,6 +26,8 @@ pub struct App {
     state: Option<State>,
     scene_renderer: Option<SceneRenderer>,
     world: Option<World>,
+    script_context: Option<ScriptContext>,
+    game_dylib: Option<Library>,
 }
 
 impl ApplicationHandler<State> for App {
@@ -37,6 +43,21 @@ impl ApplicationHandler<State> for App {
             self.state.as_ref().unwrap().surface_format(),
         ));
 
+        match GameLoader::load_dylib() {
+            Ok(dylib) => {
+                self.game_dylib = Some(dylib);
+                log::info!("Game dylib loaded sucessfully!");
+            }
+            Err(e) => log::error!("FAILED TO LOAD GAME DYLIB! {e}"),
+        }
+
+        if let Some(dylib) = self.game_dylib.as_ref() {
+            match GameLoader::init_dylib(&dylib) {
+                Ok(_) => log::info!("All components from game are registered!"),
+                Err(e) => log::error!("FAILED TO REGISTER COMPONENTS/SCRIPTS FROM GAME! {e}"),
+            }
+        }
+
         match GameLoader::load_world() {
             Ok(world) => self.world = Some(world),
             Err(e) => log::error!("FAILED TO LOAD WORLD FILE! {e}"),
@@ -47,9 +68,16 @@ impl ApplicationHandler<State> for App {
             asset_manager.load_sprite_assets(&world, &PlayerDirs::data());
         }
 
+        self.script_context = Some(ScriptContext::default());
+
         let state = self.state.as_mut().unwrap();
         let scene_renderer = self.scene_renderer.as_mut().unwrap();
         scene_renderer.upload_textures(&state.device, &state.queue, &asset_manager.textures);
+
+        phantom_core::scripting::script_scheduler::ScriptScheduler::run_all_start_scripts(
+            &mut self.world.as_mut().unwrap(),
+            &self.script_context.as_mut().unwrap(),
+        );
     }
     #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
@@ -57,6 +85,11 @@ impl ApplicationHandler<State> for App {
     }
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
+        if let Some(script_ctx) = &mut self.script_context {
+            let input_system = &mut script_ctx.input;
+            input_system.handle_event(&event);
+        }
+
         match event {
             WindowEvent::CloseRequested => {
                 info!("The close button was pressed; stopping");
@@ -129,6 +162,16 @@ impl ApplicationHandler<State> for App {
 
         state.queue.submit(std::iter::once(encoder.finish()));
         output.present();
+
+        phantom_core::scripting::script_scheduler::ScriptScheduler::run_all_update_scripts(
+            &mut self.world.as_mut().unwrap(),
+            &self.script_context.as_mut().unwrap(),
+        );
+
+        if let Some(script_ctx) = &mut self.script_context {
+            let input_system = &mut script_ctx.input;
+            input_system.end_frame();
+        }
     }
 }
 
@@ -138,14 +181,16 @@ impl App {
             state: None,
             scene_renderer: None,
             world: None,
+            script_context: None,
+            game_dylib: None,
         }
     }
 
     pub fn run() -> anyhow::Result<()> {
-        env_logger::init();
+        env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
 
         let event_loop = EventLoop::with_user_event().build()?;
-
+        event_loop.set_control_flow(winit::event_loop::ControlFlow::Poll);
         let mut app = App::new();
         event_loop.run_app(&mut app)?;
 

@@ -1,5 +1,6 @@
 pub mod context;
-pub use context::Context;
+pub use context::ScriptContext;
 pub mod script;
 pub use script::Script;
-mod script_scheduler;
+pub mod script_registry;
+pub mod script_scheduler;

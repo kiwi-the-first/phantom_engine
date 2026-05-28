@@ -1,6 +1,7 @@
 use std::any::Any;
 
-use crate::{ecs::Component, reflecton::fields::Field};
+use crate::reflecton::fields::Field;
+
 pub trait AnyStorage: Any + Send {
     fn serialize(&self) -> Vec<u8>;
     fn remove(&mut self, entity_id: u32);

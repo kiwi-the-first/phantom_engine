@@ -1,11 +1,6 @@
-use std::collections::HashMap;
-
 use egui::{Id, Ui};
 
-use crate::{
-    resources::ResourceKey,
-    workspaces::{BuiltInWorkspace, Workspace, WorkspaceConfig, workspace},
-};
+use crate::{resources::ResourceKey, workspaces::BuiltInWorkspace};
 
 pub enum ViewMenuAction {
     OpenWorkspace(String),

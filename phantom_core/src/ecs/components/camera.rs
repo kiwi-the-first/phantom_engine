@@ -5,9 +5,9 @@ use crate::ecs::Entity;
 use crate::ecs::SparseSet;
 use crate::ecs::World;
 use crate::ecs::component::Component;
+use crate::ecs::component_registry::ComponentEntry;
 use crate::reflecton::Reflection;
 use crate::reflecton::fields::Field;
-use phantom_macros::component;
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct Camera {
@@ -50,13 +50,12 @@ impl Component for Camera {
 fn __register_camera() {
     crate::ecs::component_registry::register_component(
         "Camera",
-        __deserialize_camera,
-        __add_default_camera,
+        ComponentEntry(__deserialize_camera, __add_default_camera, true),
     );
 }
 
 fn __deserialize_camera(data: &[u8]) -> Box<dyn AnyStorage> {
-    Box::new(bincode::deserialize::<SparseSet<Camera>>(data).unwrap())
+    Box::new(serde_json::from_slice::<SparseSet<Camera>>(data).unwrap())
 }
 
 fn __add_default_camera(entity: Entity) -> Box<dyn FnOnce(&mut World)> {

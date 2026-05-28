@@ -2,6 +2,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use egui::CornerRadius;
 use egui::Id;
 
 use egui::Key;
@@ -16,6 +17,7 @@ use egui_wgpu::ScreenDescriptor;
 use egui_wgpu::wgpu;
 use egui_wgpu::wgpu::TextureView;
 use egui_wgpu::wgpu::wgt::TextureViewDescriptor;
+use phantom_build::BuildSystem;
 use phantom_common::dirs;
 use phantom_runtime::renderer::scene_renderer::SceneRenderer;
 use winit::application::ApplicationHandler;
@@ -80,15 +82,22 @@ impl ApplicationHandler<State> for EditorApp {
 
         self.state = Some(state);
         self.egui_renderer = Some(egui_renderer);
+        let mut ectx = self.editor_context.as_ref().unwrap().lock().unwrap();
 
         // LOAD TEXTURES ON STARTUP
-        self.editor_context
-            .as_ref()
-            .unwrap()
-            .lock()
-            .unwrap()
-            .sync_assets()
-            .expect("COULD NOT LOAD ASSETS");
+        ectx.sync_assets().expect("COULD NOT LOAD ASSETS");
+        // BUILD GAME CODE
+        ectx.build_project();
+        // LOAD GAME DYLIB
+        if let Err(e) = ectx.load_dylib(None) {
+            log::error!("FAILED TO LOAD GAME DYLIB! {e}");
+        }
+
+        if let Err(e) = ectx.load_world() {
+            log::error!("FAILED TO LOAD GAME WORLD! {e}");
+        }
+
+        drop(ectx);
 
         // GENERATE VIEWPORT TEXTURE
         if self.state.is_some() {
@@ -177,6 +186,16 @@ impl ApplicationHandler<State> for EditorApp {
             }
         }
 
+        if let Some(egui_renderer) = &mut self.egui_renderer {
+            if let Some(ectx) = &egui_renderer.context().data_mut(|w| {
+                w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
+            }) {
+                let mut ectx_lock = ectx.lock().unwrap();
+                let input_system = &mut ectx_lock.script_ctx.input;
+                input_system.handle_event(&event);
+            }
+        }
+
         match event {
             WindowEvent::Resized(physical_size) => {
                 if let Some(state) = &mut self.state {
@@ -232,6 +251,16 @@ impl ApplicationHandler<State> for EditorApp {
 
         self.prepare_ui_context();
         self.handle_redraw();
+
+        if let Some(egui_renderer) = &mut self.egui_renderer {
+            if let Some(ectx) = &egui_renderer.context().data_mut(|w| {
+                w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
+            }) {
+                let mut ectx_lock = ectx.lock().unwrap();
+                let input_system = &mut ectx_lock.script_ctx.input;
+                input_system.end_frame();
+            }
+        }
     }
 }
 
@@ -450,7 +479,7 @@ impl EditorApp {
         if let Some(ectx) = &ctx.data_mut(|w| {
             w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
         }) {
-            let ectx_lock = ectx.lock().unwrap();
+            let mut ectx_lock = ectx.lock().unwrap();
             let world = &ectx_lock.active_world;
             let size = glam::Vec2 {
                 x: self
@@ -474,6 +503,14 @@ impl EditorApp {
                     size,
                 )
                 .expect("RENDERING FAILED"); // this a terrible way to handle this error but rn im lazy
+
+            if ectx_lock.is_playing {
+                let (active_world, script_contex) = ectx_lock.return_world_and_context();
+                phantom_core::scripting::script_scheduler::ScriptScheduler::run_all_update_scripts(
+                    active_world,
+                    script_contex,
+                );
+            }
         }
 
         let window = state.window.as_ref();
@@ -568,17 +605,56 @@ impl EditorApp {
                                     .fit_to_exact_size(egui::vec2(48.0, 48.0)),
                                 );
 
-                                egui::MenuBar::new().ui(ui, |ui| {
-                                    ui.menu_button("File", |ui| {
-                                        FileMenu::show(ui);
+                                ui.vertical(|ui| {
+                                    egui::MenuBar::new().ui(ui, |ui| {
+                                        ui.menu_button("File", |ui| {
+                                            FileMenu::show(ui);
+                                        });
+                                        ui.menu_button("Edit", |ui| {});
+                                        ui.menu_button("Tools", |ui| {});
+                                        ui.menu_button("View", |ui| {
+                                            view_menu_action = ViewMenu::show(ui)
+                                        });
+                                        ui.menu_button("Help", |ui| {});
+                                        ui.menu_button("Editor", |ui| {});
                                     });
-                                    ui.menu_button("Edit", |ui| {});
-                                    ui.menu_button("Tools", |ui| {});
-                                    ui.menu_button("View", |ui| {
-                                        view_menu_action = ViewMenu::show(ui)
+
+                                    // Play and Stop buttons
+                                    ui.horizontal(|ui| {
+                                        ui.add_space(ui.available_width() / 2.0 - 40.0);
+                                        ui.style_mut().visuals.widgets.inactive.corner_radius =
+                                            CornerRadius::from(1.0);
+                                        ui.style_mut().visuals.widgets.hovered.corner_radius =
+                                            CornerRadius::from(1.0);
+                                        ui.style_mut().visuals.widgets.active.corner_radius =
+                                            CornerRadius::from(1.0);
+
+                                        let play_clicked = ui
+                                            .add_sized([40.0, 20.0], egui::Button::new("▶"))
+                                            .clicked();
+
+                                        ui.add_space(-5.0);
+
+                                        let stop_clicked = ui
+                                            .add_sized([40.0, 20.0], egui::Button::new("■"))
+                                            .clicked();
+
+                                        if play_clicked || stop_clicked {
+                                            if let Some(ectx) = ctx.data_mut(|w| {
+                                                w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(
+                                                    ResourceKey::EditorContext,
+                                                ))
+                                            }) {
+                                                let mut ectx_lock = ectx.lock().unwrap();
+                                                if play_clicked {
+                                                    ectx_lock.start_playing();
+                                                }
+                                                if stop_clicked {
+                                                    ectx_lock.stop_playing();
+                                                }
+                                            }
+                                        }
                                     });
-                                    ui.menu_button("Help", |ui| {});
-                                    ui.menu_button("Editor", |ui| {});
                                 });
                             });
                         });

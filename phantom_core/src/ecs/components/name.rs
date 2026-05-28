@@ -1,3 +1,4 @@
+use crate::ecs::component_registry::ComponentEntry;
 use crate::ecs::{AnyStorage, Component, Entity, SparseSet, World};
 use crate::reflecton::Reflection;
 use crate::reflecton::fields::Field;
@@ -28,13 +29,12 @@ impl Component for Name {
 fn __register_name() {
     crate::ecs::component_registry::register_component(
         "Name",
-        __deserialize_name,
-        __add_default_name,
+        ComponentEntry(__deserialize_name, __add_default_name, true),
     );
 }
 
 fn __deserialize_name(data: &[u8]) -> Box<dyn AnyStorage> {
-    Box::new(bincode::deserialize::<SparseSet<Name>>(data).unwrap())
+    Box::new(serde_json::from_slice::<SparseSet<Name>>(data).unwrap())
 }
 
 fn __add_default_name(entity: Entity) -> Box<dyn FnOnce(&mut World)> {

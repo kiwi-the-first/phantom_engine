@@ -29,11 +29,12 @@ impl InspectorPanel {
             if selected_entity.is_some() {
                 let world = &mut ectx.active_world;
                 let mut components = world.get_component_fields(selected_entity.unwrap());
-                components.sort_by_key(|(name, _)| match name.as_str() {
-                    // Make sure Name, Transform are always at the top of the component list
-                    "Name" => 0,
-                    "Transform" => 1,
-                    _ => 2,
+                components.sort_by(|a, b| match (a.0.as_str(), b.0.as_str()) {
+                    ("Transform", _) => std::cmp::Ordering::Less,
+                    (_, "Transform") => std::cmp::Ordering::Greater,
+                    ("Name", _) => std::cmp::Ordering::Less,
+                    (_, "Name") => std::cmp::Ordering::Greater,
+                    (x, y) => x.cmp(y),
                 });
                 // FOR EACH COMPONENT
                 for (component_name, fields) in components {

@@ -2,7 +2,7 @@ use std::any::Any;
 
 use crate::{
     constants::invalid::INVALID,
-    ecs::{AnyStorage, Component, component},
+    ecs::{AnyStorage, Component},
     reflecton::{Reflection, fields::Field},
 };
 
@@ -17,7 +17,7 @@ impl<C: Component + Reflection + Any + 'static + serde::Serialize + Send> AnySto
     for SparseSet<C>
 {
     fn serialize(&self) -> Vec<u8> {
-        bincode::serialize(self).unwrap()
+        serde_json::to_vec(self).unwrap()
     }
     fn remove(&mut self, entity_id: u32) {
         self.remove(entity_id);

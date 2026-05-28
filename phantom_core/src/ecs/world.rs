@@ -1,14 +1,10 @@
-use std::{
-    any::{Any, TypeId},
-    collections::HashMap,
-};
+use std::collections::HashMap;
 
 use crate::{
     ecs::{
-        AnyStorage, Component, Entity, SparseSet, WorldData, component,
+        AnyStorage, Component, Entity, SparseSet, WorldData,
         component_registry::COMPONENT_REGISTRY,
         components::{Name, Transform},
-        sparse_set, world_data,
     },
     reflecton::{Reflection, fields::Field},
 };
@@ -113,10 +109,12 @@ impl World {
         if entity.generation != self.generations[entity.id as usize] {
             return None;
         }
-
         self.sparse_set_storage
             .get(C::NAME)
-            .and_then(|sparse_set| sparse_set.as_any().downcast_ref::<SparseSet<C>>())
+            .and_then(|storage| {
+                let raw = storage.as_ref() as *const dyn AnyStorage as *const SparseSet<C>;
+                unsafe { Some(&*raw) }
+            })
             .and_then(|sparse_set| sparse_set.get(entity.id))
     }
 
@@ -126,20 +124,22 @@ impl World {
         }
         self.sparse_set_storage
             .get_mut(C::NAME)
-            .and_then(|sparse_set| sparse_set.as_any_mut().downcast_mut::<SparseSet<C>>())
+            .and_then(|storage| {
+                let raw = storage.as_mut() as *mut dyn AnyStorage as *mut SparseSet<C>;
+                unsafe { Some(&mut *raw) }
+            })
             .and_then(|sparse_set| sparse_set.get_mut(entity.id))
     }
+
     // pub fn has_component<C>(entity_id, component) -> bool {}
 
     // TODO: Change to return Vec<(u32, &C)>
     pub fn query_with<C: Component>(&self) -> Vec<Entity> {
-        let sparse_set = self
-            .sparse_set_storage
-            .get(C::NAME)
-            .and_then(|sparse_set| sparse_set.as_any().downcast_ref::<SparseSet<C>>());
-
+        let sparse_set = self.sparse_set_storage.get(C::NAME).map(|storage| {
+            let raw = storage.as_ref() as *const dyn AnyStorage as *const SparseSet<C>;
+            unsafe { &*raw }
+        });
         let mut entities = Vec::new();
-
         if let Some(sparse_set) = sparse_set {
             for entity_id in &sparse_set.entity {
                 entities.push(Entity {
@@ -148,7 +148,6 @@ impl World {
                 });
             }
         }
-
         entities
     }
     pub fn query_with2<A: Component, B: Component>(&self) -> Vec<Entity> {
@@ -219,8 +218,8 @@ impl World {
 
         for (type_name, bytes) in world_data.components {
             let registry = COMPONENT_REGISTRY.get().unwrap().lock().unwrap();
-            if let Some((key, (deserialize_fn, _))) = registry.get_key_value(type_name.as_str()) {
-                let storage = deserialize_fn(&bytes);
+            if let Some((key, component_entry)) = registry.get_key_value(type_name.as_str()) {
+                let storage = (component_entry.0)(&bytes);
                 world.sparse_set_storage.insert(key, storage);
             }
         }

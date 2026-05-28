@@ -4,11 +4,11 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-phantom_common = { path = "../phantom_common"}
-phantom_project = { path = "../phantom_project"}
-clap = { version = "4.6.0", features = ["derive"] }
-anyhow = "1.0.102"
-directories = "6.0.0"
+phantom_common  = { workspace = true }
+phantom_project = { workspace = true }
+clap            = { workspace = true }
+anyhow          = { workspace = true }
+directories     = { workspace = true }
 
 [[bin]]
 name = "phantom"
