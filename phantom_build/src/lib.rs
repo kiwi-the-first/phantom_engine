@@ -1,6 +1,7 @@
 use std::{
     fs,
     path::{Path, PathBuf},
+    slice::Windows,
 };
 
 use phantom_common::dirs;
@@ -186,7 +187,13 @@ impl BuildSystem {
             .current_dir(project_path)
             .status()?;
 
+        #[cfg(windows)]
+        let dylib_name = format!("{}.dll", project_name);
+        #[cfg(target_os = "macos")]
+        let dylib_name = format!("lib{}.dylib", project_name);
+        #[cfg(target_os = "linux")]
         let dylib_name = format!("lib{}.so", project_name);
+
         let src = project_path.join("target/release").join(&dylib_name);
         let dest = dirs::BuildDirs::data(project_path).join(&dylib_name);
         std::fs::copy(src, dest)?;

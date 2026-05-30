@@ -22,8 +22,19 @@ pub fn create_project(name: String, path: PathBuf) -> anyhow::Result<()> {
         }
     };
     let cargo_toml = format!(
-        "[package]\nname = \"{}\"\nversion = \"0.1.0\"\nedition = \"2024\"\n\n[dependencies]\nphantom_core = {{ path = \"{}/phantom_core\" }}\n\n[lib]\ncrate-type = [\"cdylib\"]\n",
-        name, engine_path
+        r#"[package]
+    name = "{}"
+    version = "0.1.0"
+    edition = "2024"
+
+    [dependencies]
+    phantom_core = {{ path = "{}/phantom_core" }}
+
+    [lib]
+    crate-type = ["cdylib"]
+    "#,
+        name,
+        engine_path.replace("\\", "/")
     );
     std::fs::write(path.join("Cargo.toml"), cargo_toml)?;
 
