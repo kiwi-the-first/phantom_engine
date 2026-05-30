@@ -29,6 +29,7 @@ pub struct App {
     world: Option<World>,
     script_context: Option<ScriptContext>,
     game_dylib: Option<Library>,
+    asset_manager: Option<AssetManager>,
 }
 
 impl ApplicationHandler<State> for App {
@@ -43,6 +44,12 @@ impl ApplicationHandler<State> for App {
             &self.state.as_ref().unwrap().queue,
             self.state.as_ref().unwrap().surface_format(),
         ));
+
+        self.scene_renderer.as_mut().unwrap().resize(
+            &self.state.as_ref().unwrap().device,
+            window.inner_size().width as u32,
+            window.inner_size().height as u32,
+        );
 
         match GameLoader::load_dylib() {
             Ok(dylib) => {
@@ -66,7 +73,9 @@ impl ApplicationHandler<State> for App {
 
         let mut asset_manager = AssetManager::new();
         if let Some(world) = self.world.as_ref() {
-            asset_manager.load_sprite_assets(&world, &PlayerDirs::data());
+            if let Err(e) = asset_manager.load_sprite_assets(&world, &PlayerDirs::data()) {
+                log::error!("Failed to load sprite assets: {e}");
+            }
         }
 
         self.script_context = Some(ScriptContext::default());
@@ -74,6 +83,7 @@ impl ApplicationHandler<State> for App {
         let state = self.state.as_mut().unwrap();
         let scene_renderer = self.scene_renderer.as_mut().unwrap();
         scene_renderer.upload_textures(&state.device, &state.queue, &asset_manager.textures);
+        self.asset_manager = Some(asset_manager);
 
         phantom_core::scripting::script_scheduler::ScriptScheduler::run_all_start_scripts(
             &mut self.world.as_mut().unwrap(),
@@ -114,7 +124,13 @@ impl ApplicationHandler<State> for App {
             }
             WindowEvent::Resized(physical_size) => {
                 if let Some(state) = &mut self.state {
-                    state.resize(physical_size.width, physical_size.height);
+                    let width = physical_size.width;
+                    let height = physical_size.height;
+                    state.resize(width, height);
+                    self.scene_renderer
+                        .as_mut()
+                        .unwrap()
+                        .resize(&state.device, width, height);
                 }
             }
             WindowEvent::KeyboardInput {
@@ -150,20 +166,32 @@ impl ApplicationHandler<State> for App {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
+        // Pick up textures for any sprites spawned by scripts since the last frame.
+        if let (Some(world), Some(asset_manager)) =
+            (self.world.as_ref(), self.asset_manager.as_mut())
+        {
+            if let Err(e) = asset_manager.load_sprite_assets(world, &PlayerDirs::data()) {
+                log::error!("Failed to load sprite assets: {e}");
+            }
+            scene_renderer.upload_textures(&state.device, &state.queue, &asset_manager.textures);
+        }
+
         let mut encoder = state
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
         if let Some(world) = &self.world {
-            scene_renderer.render(
+            if let Err(e) = scene_renderer.render(
                 &state.device,
                 &state.queue,
                 &mut encoder,
                 &view,
                 world,
                 Vec2::new(state.config.width as f32, state.config.height as f32),
-            );
+            ) {
+                log::error!("Render failed: {e}");
+            };
         }
 
         state.queue.submit(std::iter::once(encoder.finish()));
@@ -192,7 +220,7 @@ impl ApplicationHandler<State> for App {
                         cam.reference_resolution.as_vec2(),
                     ))
                 })
-                .unwrap_or((Vec2::ZERO, 1.0, Vec2::new(1280.0, 720.0)));
+                .unwrap_or((Vec2::ZERO, 100.0, Vec2::new(1280.0, 720.0)));
 
             let input_system = &mut script_ctx.input;
             input_system.set_viewport(ViewportInfo {
@@ -203,6 +231,9 @@ impl ApplicationHandler<State> for App {
                 reference_resolution: ref_res,
             });
             input_system.end_frame();
+
+            let time_system = &mut script_ctx.time;
+            time_system.tick();
         }
     }
 }
@@ -215,6 +246,7 @@ impl App {
             world: None,
             script_context: None,
             game_dylib: None,
+            asset_manager: None,
         }
     }
 

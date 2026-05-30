@@ -170,7 +170,7 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
         pub fn #register_fn(
             comp_reg: &mut ::std::collections::HashMap<&'static str, ::phantom_core::ecs::component_registry::ComponentEntry>,
-            _script_reg: &mut ::std::collections::HashMap<&'static str, (fn(&mut ::phantom_core::ecs::World), fn(&mut ::phantom_core::ecs::World))>,
+            _script_reg: &mut ::std::collections::HashMap<&'static str, (fn(&mut ::phantom_core::ecs::World, &::phantom_core::scripting::ScriptContext), fn(&mut ::phantom_core::ecs::World, &::phantom_core::scripting::ScriptContext))>,
         ) {
             eprintln!("[register_{}] Starting registration", stringify!(#struct_name));
             comp_reg.insert(

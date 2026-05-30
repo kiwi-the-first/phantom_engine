@@ -12,4 +12,5 @@ pub use phantom_macros;
 pub use reflecton::Reflection;
 pub use serde;
 pub use serde_json;
+pub use winit::event::MouseButton;
 pub use winit::keyboard::KeyCode;

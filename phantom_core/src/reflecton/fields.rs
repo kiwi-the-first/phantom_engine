@@ -6,6 +6,7 @@ pub enum Field {
     TransQuat(&'static str, Quat),
     String(&'static str, String),
     F32(&'static str, f32),
+    U32(&'static str, u32),
     Vec3(&'static str, Vec3),
     Vec2(&'static str, Vec2),
     UVec2(&'static str, UVec2),

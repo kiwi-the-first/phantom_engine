@@ -32,7 +32,23 @@ impl<'a> FieldContext<'a> {
             }
         });
     }
-
+    pub fn show_u32(&mut self, field_name: &'static str, mut value: u32) {
+        self.ui.horizontal(|ui| {
+            ui.label(field_name);
+            if ui
+                .add(egui::DragValue::new(&mut value).speed(0.1))
+                .changed()
+            {
+                let mut new_fields = self.fields.clone();
+                new_fields[self.index] = Field::U32(field_name, value);
+                self.world.set_component_fields(
+                    self.component_name.clone(),
+                    self.selected_entity,
+                    new_fields,
+                );
+            }
+        });
+    }
     pub fn show_vec3(&mut self, field_name: &'static str, value: Vec3) {
         let mut x = value.x;
         let mut y = value.y;

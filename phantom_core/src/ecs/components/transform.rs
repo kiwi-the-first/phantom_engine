@@ -80,4 +80,31 @@ impl Transform {
             scale,
         }
     }
+
+    pub fn forward(&self) -> Vec3 {
+        self.rotation * Vec3::Z
+    }
+
+    pub fn forward2d(&self) -> Vec2 {
+        (self.rotation * Vec3::X).truncate()
+    }
+
+    pub fn right2d(&self) -> Vec2 {
+        let forward = self.forward2d();
+        Vec2::new(-forward.y, forward.x)
+    }
+
+    /// Rotate around the Z axis to face `target` (in world space) in 2D.
+    ///
+    /// This is a no-op when `target` coincides with the current position: there
+    /// is no well-defined direction, and normalizing a zero-length vector would
+    /// produce NaN. Use this instead of building a direction and calling
+    /// `normalize()` by hand, which is a common source of NaN rotations.
+    pub fn look_at_2d(&mut self, target: Vec2) {
+        let direction = target - self.position.truncate();
+        if direction.length_squared() > f32::EPSILON {
+            let angle = direction.y.atan2(direction.x);
+            self.rotation = Quat::from_rotation_z(angle);
+        }
+    }
 }

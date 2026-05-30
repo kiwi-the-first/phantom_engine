@@ -12,10 +12,18 @@ use crate::renderer::vertex::Vertex;
 pub struct SceneRenderer {
     render_pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
-    gpu_textures: HashMap<String, wgpu::BindGroup>,
+    gpu_textures: HashMap<String, (wgpu::BindGroup, Vec2)>,
     camera_buffer: wgpu::Buffer,
     camera_bind_group_layout: wgpu::BindGroupLayout,
     camera_bind_group: wgpu::BindGroup,
+
+    /// Last camera matrix that was finite, used as a fallback so a NaN/inf in any
+    /// entity's transform (e.g. a script normalizing a zero-length direction)
+    /// can't collapse the projection and black out the entire scene.
+    last_camera_matrix: glam::Mat4,
+
+    depth_texture: wgpu::Texture,
+    depth_view: wgpu::TextureView,
 }
 
 impl SceneRenderer {
@@ -93,6 +101,8 @@ impl SceneRenderer {
                 immediate_size: 0,
             });
 
+        let (depth_texture, depth_view) = Self::create_depth_texture(device, 1, 1);
+
         let render_pipeline = device.create_render_pipeline(&wgpu::RenderPipelineDescriptor {
             label: Some("Render Pipeline"),
             layout: Some(&render_pipeline_layout),
@@ -126,7 +136,13 @@ impl SceneRenderer {
                 // Requires Features::CONSERVATIVE_RASTERIZATION
                 conservative: false,
             },
-            depth_stencil: None, // 1.
+            depth_stencil: Some(wgpu::DepthStencilState {
+                format: wgpu::TextureFormat::Depth32Float,
+                depth_write_enabled: Some(true),
+                depth_compare: Some(wgpu::CompareFunction::Always),
+                stencil: wgpu::StencilState::default(),
+                bias: wgpu::DepthBiasState::default(),
+            }), // 1.
             multisample: wgpu::MultisampleState {
                 count: 1,                         // 2.
                 mask: !0,                         // 3.
@@ -135,6 +151,7 @@ impl SceneRenderer {
             multiview_mask: None, // 5.
             cache: None,          // 6.
         });
+
         Self {
             render_pipeline,
             bind_group_layout: texture_bind_group_layout,
@@ -142,32 +159,59 @@ impl SceneRenderer {
             camera_buffer,
             camera_bind_group_layout,
             camera_bind_group,
+            last_camera_matrix: glam::Mat4::IDENTITY,
+            depth_texture,
+            depth_view,
         }
+    }
+
+    fn create_depth_texture(
+        device: &wgpu::Device,
+        width: u32,
+        height: u32,
+    ) -> (wgpu::Texture, wgpu::TextureView) {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("depth_texture"),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Depth32Float,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&Default::default());
+        (texture, view)
     }
 
     pub fn build_sprite_verticies(&self, world: &World) -> (Vec<Vertex>, Vec<Entity>) {
         let mut entities = world.query_with2::<Sprite, Transform>();
         entities.sort_by(|a, b| {
-            let za = world
-                .get_component::<Transform>(*a)
-                .map(|t| t.position.z)
-                .unwrap_or(0.0);
-            let zb = world
-                .get_component::<Transform>(*b)
-                .map(|t| t.position.z)
-                .unwrap_or(0.0);
+            let za = world.get_component::<Transform>(*a).map(|t| t.position.z).unwrap_or(0.0);
+            let zb = world.get_component::<Transform>(*b).map(|t| t.position.z).unwrap_or(0.0);
             za.partial_cmp(&zb).unwrap_or(std::cmp::Ordering::Equal)
         });
         let vertices = entities
             .iter()
             .flat_map(|entity| {
                 let transform = world.get_component::<Transform>(*entity).unwrap();
+                let sprite = world.get_component::<Sprite>(*entity).unwrap();
                 let (_, _, angle) = transform.rotation.to_euler(glam::EulerRot::XYZ);
                 let cos_a = angle.cos();
                 let sin_a = angle.sin();
 
-                let sx = transform.scale.x;
-                let sy = transform.scale.y;
+                let (tw, th) = self
+                    .gpu_textures
+                    .get(&sprite.asset_path)
+                    .map(|(_, dims)| (dims.x, dims.y))
+                    .unwrap_or((1.0, 1.0));
+
+                let sx = transform.scale.x * tw / 2.0;
+                let sy = transform.scale.y * th / 2.0;
                 let px = transform.position.x;
                 let py = transform.position.y;
                 let pz = transform.position.z;
@@ -231,6 +275,12 @@ impl SceneRenderer {
         (vertices, entities)
     }
 
+    pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
+        let (depth_texture, depth_view) = Self::create_depth_texture(device, width, height);
+        self.depth_texture = depth_texture;
+        self.depth_view = depth_view;
+    }
+
     pub fn render(
         &mut self,
         device: &wgpu::Device,
@@ -266,11 +316,22 @@ impl SceneRenderer {
                 let (_, _, angle) = transform.rotation.to_euler(glam::EulerRot::XYZ);
                 let view = glam::Mat4::from_rotation_z(-angle)
                     * glam::Mat4::from_translation(-transform.position);
-
                 projection * view
             } else {
                 glam::Mat4::IDENTITY
             };
+
+        // A non-finite camera matrix (e.g. a script wrote a NaN/inf into the
+        // camera's transform) would map every vertex off-screen and black out
+        // the whole scene. Fall back to the last good matrix so a single bad
+        // transform degrades gracefully instead of killing all rendering.
+        let camera_matrix = if camera_matrix.is_finite() {
+            self.last_camera_matrix = camera_matrix;
+            camera_matrix
+        } else {
+            log::warn!("Camera matrix was non-finite; using last valid camera matrix");
+            self.last_camera_matrix
+        };
 
         let camera_color = if let Some(camera_entity) = world.query_with::<Camera>().first() {
             let camera = world.get_component::<Camera>(*camera_entity).unwrap();
@@ -279,6 +340,7 @@ impl SceneRenderer {
         } else {
             [0, 0, 0, 0]
         };
+
         queue.write_buffer(
             &self.camera_buffer,
             0,
@@ -302,7 +364,14 @@ impl SceneRenderer {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: None,
+                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                    view: &self.depth_view,
+                    depth_ops: Some(wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(1.0),
+                        store: wgpu::StoreOp::Store,
+                    }),
+                    stencil_ops: None,
+                }),
                 occlusion_query_set: None,
                 timestamp_writes: None,
                 multiview_mask: None,
@@ -323,7 +392,7 @@ impl SceneRenderer {
                     let start = (index * 6) as u32;
                     let end = start + 6;
 
-                    if let Some(bind_group) = self.gpu_textures.get(&sprite.asset_path) {
+                    if let Some((bind_group, _)) = self.gpu_textures.get(&sprite.asset_path) {
                         render_pass.set_bind_group(0, bind_group, &[]);
                         render_pass.draw(start..end, 0..1);
                     }
@@ -418,7 +487,13 @@ impl SceneRenderer {
                     label: Some("diffuse_bind_group"),
                 });
 
-                self.gpu_textures.insert(path.clone(), bind_group);
+                self.gpu_textures.insert(
+                    path.clone(),
+                    (
+                        bind_group,
+                        Vec2::new(dimensions.0 as f32, dimensions.1 as f32),
+                    ),
+                );
             }
         }
     }

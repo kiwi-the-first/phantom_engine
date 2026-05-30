@@ -83,14 +83,14 @@ impl World {
         entity: Entity,
         component: C,
     ) -> &mut C {
-        // Make sure sparse set for C exists if not create it
         self.sparse_set_storage
             .entry(C::NAME)
             .or_insert_with(|| Box::new(SparseSet::<C>::new()));
 
         if let Some(sparse_set) = self.sparse_set_storage.get_mut(C::NAME) {
-            if let Some(sparse_set) = sparse_set.as_any_mut().downcast_mut::<SparseSet<C>>() {
-                sparse_set.insert(entity.id, component);
+            let raw = sparse_set.as_mut() as *mut dyn AnyStorage as *mut SparseSet<C>;
+            unsafe {
+                (*raw).insert(entity.id, component);
             }
         }
 

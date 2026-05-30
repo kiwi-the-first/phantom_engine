@@ -130,6 +130,12 @@ impl ApplicationHandler<State> for EditorApp {
                 wgpu::TextureFormat::Rgba8UnormSrgb,
             ));
 
+            self.scene_renderer.as_mut().unwrap().resize(
+                &self.state.as_ref().unwrap().device,
+                self.current_viewport_size.unwrap().x as u32,
+                self.current_viewport_size.unwrap().y as u32,
+            );
+
             let viewport_view = self
                 .view_port_texture
                 .as_ref()
@@ -263,10 +269,14 @@ impl ApplicationHandler<State> for EditorApp {
             }) {
                 let mut ectx_lock = ectx.lock().unwrap();
                 let input_system = &mut ectx_lock.script_ctx.input;
+
                 if let Some(info) = viewport_info {
                     input_system.set_viewport(info);
                 }
                 input_system.end_frame();
+
+                let time_system = &mut ectx_lock.script_ctx.time;
+                time_system.tick();
             }
         }
     }
@@ -439,6 +449,13 @@ impl EditorApp {
                     wgpu::FilterMode::Linear,
                     texture_id,
                 );
+
+            self.scene_renderer.as_mut().unwrap().resize(
+                &self.state.as_ref().unwrap().device,
+                viewport_size.x as u32,
+                viewport_size.y as u32,
+            );
+
             self.view_port_texture = Some(view_port_texture);
             self.viewport_view = Some(viewport_view);
             self.current_viewport_size = Some(viewport_size);
@@ -692,7 +709,7 @@ impl EditorApp {
         state.queue.submit(Some(encoder.finish()));
         output.present();
 
-        let (viewport_size, texture_id) = {
+        let (viewport_info, texture_id) = {
             let egui_renderer = self.egui_renderer.as_ref().unwrap();
             let ctx = egui_renderer.context();
             (
@@ -700,11 +717,11 @@ impl EditorApp {
                 ctx.data(|r| r.get_temp::<egui::TextureId>(Id::new(ResourceKey::ViewportTexture))),
             )
         };
-        if let (Some(viewport_size), Some(texture_id)) = (viewport_size, texture_id) {
+        if let (Some(viewport_info), Some(texture_id)) = (viewport_info, texture_id) {
             self.handle_resize(
                 egui::Vec2 {
-                    x: viewport_size.size.x,
-                    y: viewport_size.size.y,
+                    x: viewport_info.size.x,
+                    y: viewport_info.size.y,
                 },
                 texture_id,
             );

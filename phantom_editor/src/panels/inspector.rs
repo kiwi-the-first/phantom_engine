@@ -51,6 +51,7 @@ impl InspectorPanel {
                         fctx.index = index;
                         match field {
                             Field::F32(name, val) => fctx.show_f32(name, *val),
+                            Field::U32(name, val) => fctx.show_u32(name, *val),
                             Field::Vec3(name, val) => fctx.show_vec3(name, *val),
                             Field::UVec2(name, val) => fctx.show_uvec2(name, *val),
                             Field::NameString(name, val) => {

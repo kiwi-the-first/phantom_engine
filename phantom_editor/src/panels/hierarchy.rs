@@ -74,6 +74,12 @@ impl HierarchyPanel {
 
                 response.context_menu(|ui| {
                     standard_context_menu(ui);
+                    log::trace!("Deleted entity: {}", entity);
+                    if ui.button("Delete entity").clicked() {
+                        let mut editor_ctx = ctx.lock().unwrap();
+                        let world = &mut editor_ctx.active_world;
+                        world.destroy(entity);
+                    };
                 });
             }
             // Outside of list

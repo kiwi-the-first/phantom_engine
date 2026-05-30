@@ -5,11 +5,14 @@ use winit::{
     event::{ElementState, MouseButton, WindowEvent},
     keyboard::{KeyCode, PhysicalKey},
 };
-#[derive(Default)]
 pub struct Input {
     keys_held: HashSet<KeyCode>,
     mouse_held: HashSet<MouseButton>,
-    mouse_pos: Vec2,
+    /// Raw cursor position in screen pixels. `None` until the first `CursorMoved`
+    /// event, so we never invent a bogus position (the old `f32::MAX` sentinel
+    /// overflowed to infinity in the screen->world transform, producing NaN in
+    /// any script that normalized a direction from the cursor).
+    mouse_pos: Option<Vec2>,
 
     // cleared each frame
     keys_pressed: HashSet<KeyCode>,
@@ -21,6 +24,23 @@ pub struct Input {
 
     //Editor Viewport
     viewport: Option<ViewportInfo>,
+}
+
+impl Default for Input {
+    fn default() -> Self {
+        Self {
+            keys_held: HashSet::new(),
+            mouse_held: HashSet::new(),
+            mouse_pos: None,
+            keys_pressed: HashSet::new(),
+            keys_released: HashSet::new(),
+            mouse_pressed: HashSet::new(),
+            mouse_released: HashSet::new(),
+            mouse_delta: Vec2::ZERO,
+            scroll_delta: Vec2::ZERO,
+            viewport: None,
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -54,20 +74,40 @@ impl Input {
     pub fn mouse_released(&self, button: MouseButton) -> bool {
         self.mouse_released.contains(&button)
     }
+    /// Cursor position in world space. Always finite.
+    ///
+    /// Note: this can legitimately coincide with another point (e.g. the cursor
+    /// sitting exactly on the player, or the cursor being unknown and defaulting
+    /// to the camera centre). Callers that build a direction from it must still
+    /// guard against a zero-length vector before normalizing.
     pub fn mouse_pos(&self) -> Vec2 {
-        if let Some(viewport) = &self.viewport {
-            let scale_x = viewport.size.x / viewport.reference_resolution.x * viewport.zoom;
-            let scale_y = viewport.size.y / viewport.reference_resolution.y * viewport.zoom;
-            let scale = scale_x.min(scale_y);
-            let screen = self.mouse_pos - viewport.offset;
-            let ndc = Vec2::new(
-                screen.x - viewport.size.x / 2.0,
-                -(screen.y - viewport.size.y / 2.0),
-            );
-            ndc / scale + viewport.camera_pos
-        } else {
-            self.mouse_pos
+        let Some(viewport) = &self.viewport else {
+            // No viewport mapping; return the raw screen position (or origin).
+            return self.mouse_pos.unwrap_or(Vec2::ZERO);
+        };
+
+        let scale_x = viewport.size.x / viewport.reference_resolution.x * viewport.zoom;
+        let scale_y = viewport.size.y / viewport.reference_resolution.y * viewport.zoom;
+        let scale = scale_x.min(scale_y);
+
+        // A non-positive / non-finite scale (zero zoom, zero-size viewport, etc.)
+        // would divide to infinity below — fall back to the camera position.
+        if !scale.is_finite() || scale <= 0.0 {
+            return viewport.camera_pos;
         }
+
+        // Until the cursor has actually moved, treat it as the viewport centre,
+        // which maps to the camera position in world space.
+        let screen = match self.mouse_pos {
+            Some(pos) => pos - viewport.offset,
+            None => viewport.size / 2.0,
+        };
+
+        let ndc = Vec2::new(
+            screen.x - viewport.size.x / 2.0,
+            -(screen.y - viewport.size.y / 2.0),
+        );
+        ndc / scale + viewport.camera_pos
     }
     pub fn mouse_delta(&self) -> Vec2 {
         self.mouse_delta
@@ -98,8 +138,12 @@ impl Input {
             }
             WindowEvent::CursorMoved { position, .. } => {
                 let new_pos = Vec2::new(position.x as f32, position.y as f32);
-                self.mouse_delta += new_pos - self.mouse_pos;
-                self.mouse_pos = new_pos;
+                // Only accumulate delta once we have a previous position, so the
+                // first event doesn't report a huge spurious jump.
+                if let Some(prev) = self.mouse_pos {
+                    self.mouse_delta += new_pos - prev;
+                }
+                self.mouse_pos = Some(new_pos);
             }
             WindowEvent::MouseInput { state, button, .. } => match state {
                 ElementState::Pressed => {
