@@ -17,9 +17,9 @@ use egui_wgpu::ScreenDescriptor;
 use egui_wgpu::wgpu;
 use egui_wgpu::wgpu::TextureView;
 use egui_wgpu::wgpu::wgt::TextureViewDescriptor;
-use phantom_build::BuildSystem;
 use phantom_common::dirs;
-use phantom_core::input::input::ViewportInfo;
+use phantom_core::input::input_context::ViewportInfo;
+use phantom_core::scripting::ScriptContext;
 use phantom_runtime::renderer::scene_renderer::SceneRenderer;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
@@ -53,7 +53,7 @@ pub struct EditorApp {
     egui_renderer: Option<EguiRenderer>,
     scale_factor: f32,
     is_closing: bool,
-    avalible_workspaces: HashMap<String, WorkspaceConfig>,
+    available_workspaces: HashMap<String, WorkspaceConfig>,
     dock_state: DockState<Workspace>,
     workspace_viewer: WorkspaceViewer,
     view_port_texture: Option<wgpu::Texture>,
@@ -198,7 +198,7 @@ impl ApplicationHandler<State> for EditorApp {
                 w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
             }) {
                 let mut ectx_lock = ectx.lock().unwrap();
-                let input_system = &mut ectx_lock.script_ctx.input;
+                let input_system = ectx_lock.input_system.as_mut().unwrap();
                 input_system.handle_event(&event);
             }
         }
@@ -268,14 +268,14 @@ impl ApplicationHandler<State> for EditorApp {
                 w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
             }) {
                 let mut ectx_lock = ectx.lock().unwrap();
-                let input_system = &mut ectx_lock.script_ctx.input;
+                let input_system = ectx_lock.input_system.as_mut().unwrap();
 
                 if let Some(info) = viewport_info {
                     input_system.set_viewport(info);
                 }
                 input_system.end_frame();
 
-                let time_system = &mut ectx_lock.script_ctx.time;
+                let time_system = ectx_lock.time_system.as_mut().unwrap();
                 time_system.tick();
             }
         }
@@ -325,7 +325,7 @@ impl EditorApp {
             scale_factor: 1.0,
             is_closing: false,
             dock_state: dock_state,
-            avalible_workspaces: available_workspaces,
+            available_workspaces,
             workspace_viewer: WorkspaceViewer::new(),
             view_port_texture: None,
             current_viewport_size: Some(Vec2::new(600.0, 800.0)),
@@ -360,7 +360,7 @@ impl EditorApp {
     }
 
     pub fn open_workspaces(&mut self, name: &str) {
-        if let Some(config) = self.avalible_workspaces.get(name) {
+        if let Some(config) = self.available_workspaces.get(name) {
             let workspace = Workspace::new(config.name.clone(), config.panels.clone());
             self.dock_state.push_to_first_leaf(workspace);
         }
@@ -376,7 +376,7 @@ impl EditorApp {
             .clone();
 
         let active_builtin_workspace_type: Option<BuiltInWorkspace> = match self
-            .avalible_workspaces
+            .available_workspaces
             .get(&active_workspace_name)
             .unwrap()
             .kind
@@ -385,7 +385,7 @@ impl EditorApp {
             WorkspaceKind::Custom => None,
         };
 
-        let available_workspaces: Vec<String> = self.avalible_workspaces.keys().cloned().collect();
+        let available_workspaces: Vec<String> = self.available_workspaces.keys().cloned().collect();
 
         // INSERT RESOURCES TO BE USED BY EGUI PANELS AND MENUS
         self.egui_renderer
@@ -530,10 +530,16 @@ impl EditorApp {
                 .expect("RENDERING FAILED"); // this a terrible way to handle this error but rn im lazy
 
             if ectx_lock.is_playing {
-                let (active_world, script_contex) = ectx_lock.return_world_and_context();
+                let (active_world, input_system, time_system) = ectx_lock
+                    .get_world_and_systems()
+                    .expect("FAILED TO GET WORLD AND SYSTEMS!");
+                let script_ctx = ScriptContext {
+                    input: &input_system.input_ctx,
+                    time: &time_system.time_ctx,
+                };
                 phantom_core::scripting::script_scheduler::ScriptScheduler::run_all_update_scripts(
                     active_world,
-                    script_contex,
+                    &script_ctx,
                 );
             }
         }

@@ -6,7 +6,7 @@ use phantom_core::{
         Entity,
         components::{Transform, camera::Camera},
     },
-    input::input::ViewportInfo,
+    input::input_context::ViewportInfo,
 };
 
 use crate::{context::EditorContext, resources::ResourceKey};

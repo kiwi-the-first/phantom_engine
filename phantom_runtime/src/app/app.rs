@@ -1,14 +1,14 @@
 use std::sync::Arc;
 
-use anyhow::Result;
-use env_logger::init;
 use glam::Vec2;
 use libloading::Library;
 use phantom_common::dirs::dirs::PlayerDirs;
 use phantom_core::ecs::World;
-use phantom_core::input::Input;
-use phantom_core::input::input::ViewportInfo;
+use phantom_core::input::InputSystem;
+use phantom_core::input::input_context::ViewportInfo;
 use phantom_core::scripting::ScriptContext;
+use phantom_core::scripting::script_scheduler::ScriptScheduler;
+use phantom_core::time::time_system::TimeSystem;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, EventLoop};
@@ -27,9 +27,12 @@ pub struct App {
     state: Option<State>,
     scene_renderer: Option<SceneRenderer>,
     world: Option<World>,
-    script_context: Option<ScriptContext>,
-    game_dylib: Option<Library>,
     asset_manager: Option<AssetManager>,
+    input_system: Option<InputSystem>,
+    time_system: Option<TimeSystem>,
+
+    /// Held to prevent drop from memory
+    game_dylib: Option<Library>,
 }
 
 impl ApplicationHandler<State> for App {
@@ -37,67 +40,72 @@ impl ApplicationHandler<State> for App {
         let window_attributes = Window::default_attributes();
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
         let state = pollster::block_on(State::new(window.clone())).unwrap();
-        self.state = Some(state);
 
-        self.scene_renderer = Some(SceneRenderer::new(
-            &self.state.as_ref().unwrap().device,
-            &self.state.as_ref().unwrap().queue,
-            self.state.as_ref().unwrap().surface_format(),
-        ));
+        let mut scene_renderer =
+            SceneRenderer::new(&state.device, &state.queue, state.surface_format());
 
-        self.scene_renderer.as_mut().unwrap().resize(
-            &self.state.as_ref().unwrap().device,
+        scene_renderer.resize(
+            &state.device,
             window.inner_size().width as u32,
             window.inner_size().height as u32,
         );
 
-        match GameLoader::load_dylib() {
+        let game_dylib = match GameLoader::load_dylib() {
             Ok(dylib) => {
-                self.game_dylib = Some(dylib);
-                log::info!("Game dylib loaded sucessfully!");
+                GameLoader::init_dylib(&dylib).expect("FAILED TO INITIALIZE GAME DYLIB!");
+                log::info!("Game dylib loaded and initialized successfully!");
+                dylib
             }
-            Err(e) => log::error!("FAILED TO LOAD GAME DYLIB! {e}"),
-        }
+            Err(e) => panic!("FAILED TO LOAD GAME DYLIB! {e}"),
+        };
 
-        if let Some(dylib) = self.game_dylib.as_ref() {
-            match GameLoader::init_dylib(&dylib) {
-                Ok(_) => log::info!("All components from game are registered!"),
-                Err(e) => log::error!("FAILED TO REGISTER COMPONENTS/SCRIPTS FROM GAME! {e}"),
+        // World MUST be loaded after the game_dylib!
+        let mut world = match GameLoader::load_world() {
+            Ok(world) => {
+                log::info!("World loaded successfully!");
+                world
+            }
+            Err(e) => panic!("FAILED TO LOAD WORLD FILE! {e}"),
+        };
+
+        let mut asset_manager = AssetManager::default();
+
+        match asset_manager.load_sprite_assets(&world, &PlayerDirs::data()) {
+            Ok(_) => {
+                scene_renderer.upload_textures(
+                    &state.device,
+                    &state.queue,
+                    &asset_manager.textures,
+                );
+                log::info!("Sprites loaded successfully!")
+            }
+            Err(e) => {
+                panic!("FAILED TO LOAD SPRITE ASSETS!: {e}");
             }
         }
 
-        match GameLoader::load_world() {
-            Ok(world) => self.world = Some(world),
-            Err(e) => log::error!("FAILED TO LOAD WORLD FILE! {e}"),
-        }
+        let time_system = TimeSystem::default();
+        let input_system = InputSystem::default();
+        let script_ctx = ScriptContext {
+            input: &input_system.input_ctx,
+            time: &time_system.time_ctx,
+        };
 
-        let mut asset_manager = AssetManager::new();
-        if let Some(world) = self.world.as_ref() {
-            if let Err(e) = asset_manager.load_sprite_assets(&world, &PlayerDirs::data()) {
-                log::error!("Failed to load sprite assets: {e}");
-            }
-        }
+        ScriptScheduler::run_all_start_scripts(&mut world, &script_ctx);
 
-        self.script_context = Some(ScriptContext::default());
-
-        let state = self.state.as_mut().unwrap();
-        let scene_renderer = self.scene_renderer.as_mut().unwrap();
-        scene_renderer.upload_textures(&state.device, &state.queue, &asset_manager.textures);
+        self.state = Some(state);
+        self.scene_renderer = Some(scene_renderer);
+        self.world = Some(world);
         self.asset_manager = Some(asset_manager);
-
-        phantom_core::scripting::script_scheduler::ScriptScheduler::run_all_start_scripts(
-            &mut self.world.as_mut().unwrap(),
-            &self.script_context.as_mut().unwrap(),
-        );
+        self.input_system = Some(input_system);
+        self.time_system = Some(time_system);
+        self.game_dylib = Some(game_dylib);
     }
     #[allow(unused_mut)]
-    fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
-        self.state = Some(event);
-    }
+    fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut _event: State) {}
 
     fn window_event(&mut self, event_loop: &ActiveEventLoop, _id: WindowId, event: WindowEvent) {
-        if let Some(script_ctx) = &mut self.script_context {
-            let input_system = &mut script_ctx.input;
+        if let Some(input_system) = &mut self.input_system {
             input_system.handle_event(&event);
         }
 
@@ -123,14 +131,13 @@ impl ApplicationHandler<State> for App {
                 //self.window.as_ref().unwrap().request_redraw();
             }
             WindowEvent::Resized(physical_size) => {
-                if let Some(state) = &mut self.state {
+                if let (Some(state), Some(scene_renderer)) =
+                    (&mut self.state, &mut self.scene_renderer)
+                {
                     let width = physical_size.width;
                     let height = physical_size.height;
                     state.resize(width, height);
-                    self.scene_renderer
-                        .as_mut()
-                        .unwrap()
-                        .resize(&state.device, width, height);
+                    scene_renderer.resize(&state.device, width, height);
                 }
             }
             WindowEvent::KeyboardInput {
@@ -167,9 +174,7 @@ impl ApplicationHandler<State> for App {
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         // Pick up textures for any sprites spawned by scripts since the last frame.
-        if let (Some(world), Some(asset_manager)) =
-            (self.world.as_ref(), self.asset_manager.as_mut())
-        {
+        if let (Some(world), Some(asset_manager)) = (&self.world, &mut self.asset_manager) {
             if let Err(e) = asset_manager.load_sprite_assets(world, &PlayerDirs::data()) {
                 log::error!("Failed to load sprite assets: {e}");
             }
@@ -197,44 +202,26 @@ impl ApplicationHandler<State> for App {
         state.queue.submit(std::iter::once(encoder.finish()));
         output.present();
 
-        phantom_core::scripting::script_scheduler::ScriptScheduler::run_all_update_scripts(
-            &mut self.world.as_mut().unwrap(),
-            &self.script_context.as_mut().unwrap(),
-        );
+        let viewport_info = self
+            .gather_viewport_info()
+            .expect("CAMERA MUST EXIST TO RENDER!");
 
-        if let Some(script_ctx) = &mut self.script_context {
-            let window_size = Vec2::new(state.config.width as f32, state.config.height as f32);
+        if let (Some(input_system), Some(time_system), Some(world)) = (
+            &mut self.input_system,
+            &mut self.time_system,
+            &mut self.world,
+        ) {
+            let script_ctx = ScriptContext {
+                input: &input_system.input_ctx,
+                time: &time_system.time_ctx,
+            };
+            ScriptScheduler::run_all_update_scripts(world, &script_ctx);
 
-            let (camera_pos, zoom, ref_res) = self
-                .world
-                .as_ref()
-                .and_then(|world| {
-                    use phantom_core::ecs::components::{Transform, camera::Camera};
-                    let cams = world.query_with::<Camera>();
-                    let cam_entity = cams.first()?;
-                    let cam = world.get_component::<Camera>(*cam_entity)?;
-                    let transform = world.get_component::<Transform>(*cam_entity)?;
-                    Some((
-                        Vec2::new(transform.position.x, transform.position.y),
-                        cam.zoom,
-                        cam.reference_resolution.as_vec2(),
-                    ))
-                })
-                .unwrap_or((Vec2::ZERO, 100.0, Vec2::new(1280.0, 720.0)));
+            input_system.set_viewport(viewport_info);
 
-            let input_system = &mut script_ctx.input;
-            input_system.set_viewport(ViewportInfo {
-                size: window_size,
-                offset: Vec2::ZERO,
-                camera_pos,
-                zoom,
-                reference_resolution: ref_res,
-            });
             input_system.end_frame();
-
-            let time_system = &mut script_ctx.time;
             time_system.tick();
-        }
+        };
     }
 }
 
@@ -244,9 +231,10 @@ impl App {
             state: None,
             scene_renderer: None,
             world: None,
-            script_context: None,
             game_dylib: None,
             asset_manager: None,
+            input_system: None,
+            time_system: None,
         }
     }
 
@@ -259,5 +247,38 @@ impl App {
         event_loop.run_app(&mut app)?;
 
         Ok(())
+    }
+
+    fn gather_viewport_info(&self) -> anyhow::Result<ViewportInfo> {
+        let state = self.state.as_ref().expect("FAILED TO GATHER STATE!");
+
+        let window_size = Vec2::new(state.config.width as f32, state.config.height as f32);
+
+        let (camera_pos, zoom, ref_res) = self
+            .world
+            .as_ref()
+            .and_then(|world| {
+                use phantom_core::ecs::components::{Transform, camera::Camera};
+                let cams = world.query_with::<Camera>();
+                let cam_entity = cams.first()?;
+                let cam = world.get_component::<Camera>(*cam_entity)?;
+                let transform = world.get_component::<Transform>(*cam_entity)?;
+                Some((
+                    Vec2::new(transform.position.x, transform.position.y),
+                    cam.zoom,
+                    cam.reference_resolution.as_vec2(),
+                ))
+            })
+            .ok_or_else(|| anyhow::anyhow!("No camera found in world"))?;
+
+        let info = ViewportInfo {
+            size: window_size,
+            offset: Vec2::ZERO,
+            camera_pos,
+            zoom,
+            reference_resolution: ref_res,
+        };
+
+        Ok(info)
     }
 }

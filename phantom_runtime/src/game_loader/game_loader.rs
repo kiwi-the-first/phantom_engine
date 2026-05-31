@@ -38,11 +38,15 @@ impl GameLoader {
         Ok(lib)
     }
 
+    /// Invokes the game dylib's `phantom_init` function to register its component and script types.
+    ///
+    /// # Errors
+    /// Returns an error if the dylib doesn't export `phantom_init`.
     pub fn init_dylib(lib: &libloading::Library) -> anyhow::Result<()> {
         use phantom_core::ecs::component_registry::get_component_registry_ptr;
         use phantom_core::scripting::script_registry::get_script_registry_ptr;
 
-        log::trace!("GameLoader::init_dylib() starting");
+        log::trace!("Loading phantom_init symbol from dylib");
 
         unsafe {
             let phantom_init: libloading::Symbol<unsafe extern "C" fn(*mut (), *mut ())> =
@@ -56,7 +60,7 @@ impl GameLoader {
             log::trace!("phantom_init completed");
         }
 
-        log::trace!("GameLoader::init_dylib() complete");
+        log::trace!("Component and script registration complete");
         Ok(())
     }
 }

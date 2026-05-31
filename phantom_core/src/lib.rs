@@ -4,6 +4,7 @@ pub mod input;
 pub mod reflecton;
 pub mod scripting;
 pub mod serialization;
+pub mod time;
 
 pub use bincode;
 pub use ctor;

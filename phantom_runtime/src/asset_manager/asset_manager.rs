@@ -8,19 +8,13 @@ use phantom_core::ecs::{Entity, World, components::Sprite};
 
 use crate::asset_manager::asset_types::texture::Texture;
 
+#[derive(Default)]
 pub struct AssetManager {
     processed_entities: HashMap<u32, String>,
     pub textures: HashMap<String, Texture>,
 }
 
 impl AssetManager {
-    pub fn new() -> Self {
-        Self {
-            processed_entities: HashMap::new(),
-            textures: HashMap::new(),
-        }
-    }
-
     pub fn load_sprite_assets(&mut self, world: &World, project_root: &Path) -> Result<()> {
         let entitys_with_sprites: Vec<Entity> = world.query_with::<Sprite>();
 

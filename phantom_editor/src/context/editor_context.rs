@@ -1,11 +1,13 @@
 use std::path::PathBuf;
 
-use anyhow::{Ok, Result};
+use anyhow::{Ok, Result, anyhow};
 use libloading::Library;
 use phantom_build::BuildSystem;
 use phantom_core::{
     ecs::{Entity, World},
-    scripting::ScriptContext,
+    input::{InputSystem, input_system},
+    scripting::{ScriptContext, script_scheduler::ScriptScheduler},
+    time::time_system::{self, TimeSystem},
 };
 use phantom_project::{
     phantom_project::PhantomProject, project_manager::project_manager::ProjectManager,
@@ -21,25 +23,29 @@ pub struct EditorContext {
     pub active_world: World,
     pub selected_entity: Option<Entity>,
     pub asset_manager: AssetManager,
-    pub script_ctx: ScriptContext,
     pub game_dylib: Option<Library>,
     pub is_playing: bool,
     pub world_snapshot: Option<Vec<u8>>,
+    pub input_system: Option<InputSystem>,
+    pub time_system: Option<TimeSystem>,
 }
 
 impl EditorContext {
     pub fn new(project_path: PathBuf, project: PhantomProject, world: World) -> Self {
-        let asset_manager = AssetManager::new();
+        let asset_manager = AssetManager::default();
+        let input_system = InputSystem::default();
+        let time_system = TimeSystem::default();
         Self {
             project_path: project_path,
             project: project,
             active_world: world,
             selected_entity: None,
             asset_manager,
-            script_ctx: ScriptContext::default(),
             game_dylib: None,
             is_playing: false,
             world_snapshot: None,
+            input_system: Some(input_system),
+            time_system: Some(time_system),
         }
     }
 
@@ -158,10 +164,13 @@ impl EditorContext {
         self.world_snapshot = Some(snapshot);
         self.is_playing = true;
 
-        phantom_core::scripting::script_scheduler::ScriptScheduler::run_all_start_scripts(
-            &mut self.active_world,
-            &self.script_ctx,
-        );
+        if let (Some(input_system), Some(time_system)) = (&self.input_system, &self.time_system) {
+            let script_ctx = ScriptContext {
+                input: &input_system.input_ctx,
+                time: &time_system.time_ctx,
+            };
+            ScriptScheduler::run_all_start_scripts(&mut self.active_world, &script_ctx);
+        }
     }
 
     pub fn stop_playing(&mut self) {
@@ -172,7 +181,13 @@ impl EditorContext {
         self.world_snapshot = None;
     }
 
-    pub fn return_world_and_context(&mut self) -> (&mut World, &mut ScriptContext) {
-        (&mut self.active_world, &mut self.script_ctx)
+    pub fn get_world_and_systems(
+        &mut self,
+    ) -> Result<(&mut World, &mut InputSystem, &mut TimeSystem)> {
+        if let (Some(input), Some(time)) = (self.input_system.as_mut(), self.time_system.as_mut()) {
+            Ok((&mut self.active_world, input, time))
+        } else {
+            Err(anyhow!("FAILED TO FETCH SYSTEMS!"))
+        }
     }
 }

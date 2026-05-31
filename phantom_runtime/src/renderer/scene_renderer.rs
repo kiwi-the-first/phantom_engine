@@ -191,8 +191,14 @@ impl SceneRenderer {
     pub fn build_sprite_verticies(&self, world: &World) -> (Vec<Vertex>, Vec<Entity>) {
         let mut entities = world.query_with2::<Sprite, Transform>();
         entities.sort_by(|a, b| {
-            let za = world.get_component::<Transform>(*a).map(|t| t.position.z).unwrap_or(0.0);
-            let zb = world.get_component::<Transform>(*b).map(|t| t.position.z).unwrap_or(0.0);
+            let za = world
+                .get_component::<Transform>(*a)
+                .map(|t| t.position.z)
+                .unwrap_or(0.0);
+            let zb = world
+                .get_component::<Transform>(*b)
+                .map(|t| t.position.z)
+                .unwrap_or(0.0);
             za.partial_cmp(&zb).unwrap_or(std::cmp::Ordering::Equal)
         });
         let vertices = entities
