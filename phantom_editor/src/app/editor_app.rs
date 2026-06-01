@@ -1,7 +1,9 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::Mutex;
 
+use anyhow::anyhow;
 use egui::CornerRadius;
 use egui::Id;
 
@@ -20,12 +22,14 @@ use egui_wgpu::wgpu::wgt::TextureViewDescriptor;
 use phantom_common::dirs;
 use phantom_core::input::input_context::ViewportInfo;
 use phantom_core::scripting::ScriptContext;
+use phantom_project::project_manager::project_manager::ProjectManager;
 use phantom_runtime::renderer::scene_renderer::SceneRenderer;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::ControlFlow;
 use winit::event_loop::{ActiveEventLoop, EventLoop};
 use winit::keyboard::{KeyCode, PhysicalKey};
+use winit::window::Icon;
 use winit::window::{Window, WindowId};
 
 use log::*;
@@ -65,24 +69,22 @@ pub struct EditorApp {
 
 impl ApplicationHandler<State> for EditorApp {
     fn resumed(&mut self, event_loop: &ActiveEventLoop) {
-        // Create Window Icon
-        let icon_bytes = include_bytes!("../images/phantom_engine_icon_256.png");
-        let icon_image = image::load_from_memory(icon_bytes).unwrap().to_rgba8();
-        let (width, height) = icon_image.dimensions();
-        let icon = winit::window::Icon::from_rgba(icon_image.into_raw(), width, height).unwrap();
+        let icon = self
+            .create_window_icon()
+            .inspect_err(|e| log::error!("FAILED TO CREATE WINDOW ICON! {e}"))
+            .ok();
 
         let window_attributes = Window::default_attributes()
             .with_title("Phantom Engine")
-            .with_window_icon(Some(icon));
+            .with_window_icon(icon);
+
         let window = Arc::new(event_loop.create_window(window_attributes).unwrap());
 
         let state = pollster::block_on(State::new(window.clone())).unwrap();
 
-        let egui_renderer =
+        let mut egui_renderer =
             EguiRenderer::new(&window, &state.device, state.surface_format(), None, 1);
 
-        self.state = Some(state);
-        self.egui_renderer = Some(egui_renderer);
         let mut ectx = self.editor_context.as_ref().unwrap().lock().unwrap();
 
         // LOAD TEXTURES ON STARTUP
@@ -101,83 +103,57 @@ impl ApplicationHandler<State> for EditorApp {
         drop(ectx);
 
         // GENERATE VIEWPORT TEXTURE
-        if self.state.is_some() {
-            let view_port_texture =
-                self.state
-                    .as_ref()
-                    .unwrap()
-                    .device
-                    .create_texture(&wgpu::TextureDescriptor {
-                        label: Some("viewport"),
-                        size: wgpu::Extent3d {
-                            width: self.current_viewport_size.unwrap().x as u32,
-                            height: self.current_viewport_size.unwrap().y as u32,
-                            depth_or_array_layers: 1,
-                        },
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                            | wgpu::TextureUsages::TEXTURE_BINDING,
-                        view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
-                    });
-            self.view_port_texture = Some(view_port_texture);
+        let view_port_texture = state.device.create_texture(&wgpu::TextureDescriptor {
+            label: Some("viewport"),
+            size: wgpu::Extent3d {
+                width: self.current_viewport_size.unwrap().x as u32,
+                height: self.current_viewport_size.unwrap().y as u32,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+            view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
+        });
 
-            self.scene_renderer = Some(SceneRenderer::new(
-                &self.state.as_ref().unwrap().device,
-                &self.state.as_ref().unwrap().queue,
-                wgpu::TextureFormat::Rgba8UnormSrgb,
-            ));
+        let mut scene_renderer = SceneRenderer::new(
+            &state.device,
+            &state.queue,
+            wgpu::TextureFormat::Rgba8UnormSrgb,
+        );
 
-            self.scene_renderer.as_mut().unwrap().resize(
-                &self.state.as_ref().unwrap().device,
-                self.current_viewport_size.unwrap().x as u32,
-                self.current_viewport_size.unwrap().y as u32,
+        scene_renderer.resize(
+            &state.device,
+            self.current_viewport_size.unwrap().x as u32,
+            self.current_viewport_size.unwrap().y as u32,
+        );
+
+        let viewport_view = view_port_texture.create_view(&Default::default());
+
+        let texture_id = egui_renderer.wgpu_renderer.register_native_texture(
+            &state.device,
+            &viewport_view,
+            wgpu::FilterMode::Linear,
+        );
+
+        let actions = Arc::new(Mutex::new(Actions::new()));
+
+        egui_renderer.context().data_mut(|w| {
+            w.insert_temp(Id::new(ResourceKey::ViewportTexture), texture_id);
+            w.insert_temp(Id::new(ResourceKey::Actions), actions);
+            w.insert_temp(
+                Id::new(ResourceKey::EditorContext),
+                self.editor_context.take().unwrap(),
             );
+        });
 
-            let viewport_view = self
-                .view_port_texture
-                .as_ref()
-                .unwrap()
-                .create_view(&Default::default());
-
-            let texture_id = self
-                .egui_renderer
-                .as_mut()
-                .unwrap()
-                .egui_renderer
-                .register_native_texture(
-                    &self.state.as_ref().unwrap().device,
-                    &viewport_view,
-                    wgpu::FilterMode::Linear,
-                );
-
-            // Send TextureId to ctx
-            self.egui_renderer
-                .as_mut()
-                .unwrap()
-                .context()
-                .data_mut(|d| {
-                    d.insert_temp(Id::new(ResourceKey::ViewportTexture), texture_id);
-                });
-
-            self.viewport_view = Some(viewport_view);
-
-            let actions = Arc::new(Mutex::new(Actions::new()));
-
-            self.egui_renderer
-                .as_mut()
-                .unwrap()
-                .context()
-                .data_mut(|w| {
-                    w.insert_temp(Id::new(ResourceKey::Actions), actions);
-                    w.insert_temp(
-                        Id::new(ResourceKey::EditorContext),
-                        self.editor_context.take().unwrap(),
-                    );
-                });
-        }
+        self.state = Some(state);
+        self.egui_renderer = Some(egui_renderer);
+        self.view_port_texture = Some(view_port_texture);
+        self.scene_renderer = Some(scene_renderer);
+        self.viewport_view = Some(viewport_view);
     }
     #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
@@ -335,7 +311,10 @@ impl EditorApp {
         }
     }
 
-    pub fn run(editor_context: EditorContext) -> anyhow::Result<()> {
+    pub fn run(project_path: PathBuf) -> anyhow::Result<()> {
+        let (project, init_world) = ProjectManager::load(project_path.clone())?;
+        let editor_context = EditorContext::new(project_path, project, init_world);
+
         if let Some(_file) = Logger::create_log_file() {
             env_logger::Builder::new()
                 .target(env_logger::Target::Stdout)
@@ -355,7 +334,6 @@ impl EditorApp {
         let mut app = EditorApp::new();
         app.editor_context = Some(Arc::new(Mutex::new(editor_context)));
         event_loop.run_app(&mut app)?;
-
         Ok(())
     }
 
@@ -365,7 +343,22 @@ impl EditorApp {
             self.dock_state.push_to_first_leaf(workspace);
         }
     }
+    fn create_window_icon(&self) -> anyhow::Result<Icon> {
+        let icon_bytes = include_bytes!("../images/phantom_engine_icon_256.png");
 
+        let icon_image = match image::load_from_memory(icon_bytes) {
+            Ok(image) => image.to_rgba8(),
+            Err(e) => return Err(anyhow!("FAILED TO LOAD ICON IMAGE! {e}")),
+        };
+
+        let (width, height) = icon_image.dimensions();
+        let icon = match Icon::from_rgba(icon_image.into_raw(), width, height) {
+            Ok(icon) => icon,
+            Err(e) => return Err(anyhow!("FAILED TO GENERATE ICON! {e}")),
+        };
+
+        Ok(icon)
+    }
     fn prepare_ui_context(&mut self) {
         let active_workspace_name = self
             .dock_state
@@ -442,7 +435,7 @@ impl EditorApp {
                 .egui_renderer
                 .as_mut()
                 .unwrap()
-                .egui_renderer
+                .wgpu_renderer
                 .update_egui_texture_from_wgpu_texture(
                     &self.state.as_ref().unwrap().device,
                     &viewport_view,

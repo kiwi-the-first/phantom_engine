@@ -11,7 +11,7 @@ use winit::{event::WindowEvent, window::Window};
 
 pub struct EguiRenderer {
     egui_state: State,
-    pub egui_renderer: Renderer,
+    pub wgpu_renderer: Renderer,
     frame_started: bool,
 }
 
@@ -48,7 +48,7 @@ impl EguiRenderer {
         );
         Self {
             egui_state: egui_state,
-            egui_renderer: egui_renderer,
+            wgpu_renderer: egui_renderer,
             frame_started: false,
         }
     }
@@ -96,10 +96,10 @@ impl EguiRenderer {
             self.egui_state.egui_ctx().pixels_per_point(),
         );
         for (id, image_delta) in &full_output.textures_delta.set {
-            self.egui_renderer
+            self.wgpu_renderer
                 .update_texture(device, queue, *id, image_delta);
         }
-        self.egui_renderer
+        self.wgpu_renderer
             .update_buffers(device, queue, encoder, &tris, &screen_descriptor);
         let rpass = encoder.begin_render_pass(&RenderPassDescriptor {
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
@@ -118,10 +118,10 @@ impl EguiRenderer {
             multiview_mask: Default::default(),
         });
 
-        self.egui_renderer
+        self.wgpu_renderer
             .render(&mut rpass.forget_lifetime(), &tris, &screen_descriptor);
         for x in &full_output.textures_delta.free {
-            self.egui_renderer.free_texture(x)
+            self.wgpu_renderer.free_texture(x)
         }
 
         self.frame_started = false;
