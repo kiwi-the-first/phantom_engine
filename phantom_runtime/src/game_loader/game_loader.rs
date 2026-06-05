@@ -49,13 +49,18 @@ impl GameLoader {
         log::trace!("Loading phantom_init symbol from dylib");
 
         unsafe {
-            let phantom_init: libloading::Symbol<unsafe extern "C" fn(*mut (), *mut ())> =
-                lib.get(b"phantom_init")?;
+            let phantom_init: libloading::Symbol<
+                unsafe extern "C" fn(*mut (), *mut (), &'static dyn log::Log, log::LevelFilter),
+            > = lib.get(b"phantom_init")?;
 
             log::trace!("Calling phantom_init with registry pointers");
+            // Hand the host's installed logger + level across so the dylib's `log`
+            // global points at the same sink (editor console / player stderr).
             phantom_init(
                 get_component_registry_ptr() as *mut (),
                 get_script_registry_ptr() as *mut (),
+                log::logger(),
+                log::max_level(),
             );
             log::trace!("phantom_init completed");
         }

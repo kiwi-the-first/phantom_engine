@@ -286,11 +286,24 @@ pub fn phantom_register(input: TokenStream) -> TokenStream {
     });
 
     quote! {
+        // The trait-object reference (`&dyn Log`) is a fat pointer, which trips the
+        // improper_ctypes lint. It's sound here: host and dylib share the same `log`
+        // crate version, so the layout matches, and the logger lives in the host which
+        // never unloads.
         #[unsafe(no_mangle)]
+        #[allow(improper_ctypes_definitions)]
         pub extern "C" fn phantom_init(
             comp_reg: *mut ::std::collections::HashMap<&'static str, ::phantom_core::ecs::component_registry::ComponentEntry>,
             script_reg: *mut ::std::collections::HashMap<&'static str, (fn(&mut ::phantom_core::ecs::World, &::phantom_core::scripting::ScriptContext), fn(&mut ::phantom_core::ecs::World, &::phantom_core::scripting::ScriptContext))>,
+            logger: &'static dyn ::phantom_core::log::Log,
+            max_level: ::phantom_core::log::LevelFilter,
         ) {
+            // Install the host's logger into this dylib's own (separate) `log` global so
+            // that `log::info!` etc. from game code route to the host sink. A fresh dylib
+            // load has an uninitialized global, so this succeeds once per (re)load.
+            let _ = ::phantom_core::log::set_logger(logger);
+            ::phantom_core::log::set_max_level(max_level);
+
             eprintln!("[phantom_init] Called with pointers: comp_reg={:p} script_reg={:p}", comp_reg, script_reg);
             if comp_reg.is_null() || script_reg.is_null() {
                 eprintln!("[phantom_init] ERROR: Null pointer received!");

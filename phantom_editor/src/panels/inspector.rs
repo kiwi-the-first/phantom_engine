@@ -1,30 +1,13 @@
-use std::sync::{Arc, Mutex};
+use egui::{RichText, Ui};
+use phantom_core::{ecs::component_registry, reflecton::fields::Field};
 
-use egui::{Color32, Grid, Id, Label, Layout, RichText, Spacing, TextBuffer, Ui, Vec2};
-use glam::{Quat, Vec3};
-use log::*;
-use phantom_core::{
-    ecs::{
-        Entity,
-        component_registry::{self, COMPONENT_REGISTRY},
-    },
-    reflecton::fields::{self, Field},
-};
-
-use crate::{context::EditorContext, panels::field_wigets::FieldContext, resources::ResourceKey};
+use crate::{context::EditorContext, panels::field_wigets::FieldContext};
 
 pub struct InspectorPanel {}
 
 impl InspectorPanel {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    pub fn show(&mut self, ui: &mut Ui) {
-        if let Some(ectx) = ui.ctx().data_mut(|w| {
-            w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
-        }) {
-            let mut ectx = ectx.lock().unwrap();
+    pub fn show(ui: &mut Ui, ectx: &mut EditorContext) {
+        {
             let selected_entity = ectx.selected_entity;
             if selected_entity.is_some() {
                 let world = &mut ectx.active_world;
@@ -88,15 +71,5 @@ impl InspectorPanel {
             }
         }
         ui.separator();
-    }
-}
-
-fn generate_id(selected_entity: Option<Entity>, component_name: &String, index: usize) -> Id {
-    Id::new((selected_entity.unwrap().id, component_name, index))
-}
-
-fn init_temp<T: Clone + Send + Sync + 'static>(ui: &mut Ui, id: Id, value: T) {
-    if ui.data_mut(|w| w.get_temp::<T>(id)).is_none() {
-        ui.data_mut(|w| w.insert_temp::<T>(id, value));
     }
 }

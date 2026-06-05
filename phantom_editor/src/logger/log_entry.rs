@@ -1,4 +1,4 @@
 pub struct LogEntry {
-    level: log::Level,
-    message: String,
+    pub level: log::Level,
+    pub message: String,
 }

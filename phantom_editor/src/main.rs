@@ -1,19 +1,20 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Result;
-use phantom_project::project_manager::project_manager::ProjectManager;
 
-use crate::{app::editor_app::EditorApp, context::EditorContext};
+use crate::app::editor_app::EditorApp;
 
 pub mod actions;
 pub mod app;
 pub mod context;
+pub mod dock;
 pub mod egui;
 pub mod logger;
 pub mod menus;
 pub mod panels;
 pub mod persitance;
-pub mod resources;
+pub mod shortcuts;
+pub mod top_bar;
 pub mod workspaces;
 
 fn main() -> Result<()> {

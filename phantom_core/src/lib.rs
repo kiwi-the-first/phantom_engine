@@ -9,6 +9,7 @@ pub mod time;
 pub use bincode;
 pub use ctor;
 pub use glam;
+pub use log;
 pub use phantom_macros;
 pub use reflecton::Reflection;
 pub use serde;

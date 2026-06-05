@@ -10,7 +10,7 @@ pub mod console;
 pub use console::ConsolePanel;
 
 pub mod viewport;
-pub use viewport::ViewportPanel;
+pub use viewport::{Viewport, ViewportPanel};
 
 pub mod hierarchy;
 pub use hierarchy::HierarchyPanel;

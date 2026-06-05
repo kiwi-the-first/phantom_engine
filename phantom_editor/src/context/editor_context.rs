@@ -1,4 +1,8 @@
-use std::path::PathBuf;
+use std::{
+    collections::VecDeque,
+    path::PathBuf,
+    sync::{Arc, Mutex},
+};
 
 use anyhow::{Ok, Result, anyhow};
 use libloading::Library;
@@ -17,11 +21,14 @@ use phantom_runtime::{
     game_loader::game_loader::GameLoader,
 };
 
+use crate::logger::LogEntry;
+
 pub struct EditorContext {
     pub project_path: PathBuf,
     pub project: PhantomProject,
     pub active_world: World,
     pub selected_entity: Option<Entity>,
+    pub log_buffer: Arc<Mutex<VecDeque<LogEntry>>>,
     pub asset_manager: AssetManager,
     pub game_dylib: Option<Library>,
     pub is_playing: bool,
@@ -31,7 +38,12 @@ pub struct EditorContext {
 }
 
 impl EditorContext {
-    pub fn new(project_path: PathBuf, project: PhantomProject, world: World) -> Self {
+    pub fn new(
+        project_path: PathBuf,
+        project: PhantomProject,
+        world: World,
+        log_buffer: Arc<Mutex<VecDeque<LogEntry>>>,
+    ) -> Self {
         let asset_manager = AssetManager::default();
         let input_system = InputSystem::default();
         let time_system = TimeSystem::default();
@@ -40,6 +52,7 @@ impl EditorContext {
             project: project,
             active_world: world,
             selected_entity: None,
+            log_buffer,
             asset_manager,
             game_dylib: None,
             is_playing: false,

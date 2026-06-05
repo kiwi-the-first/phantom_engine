@@ -1,34 +1,19 @@
-use std::sync::{Arc, Mutex};
-
-use egui::{Color32, Id, Label, ScrollArea, Sense, Ui};
+use egui::{Color32, ScrollArea, Sense, Ui};
 use log::trace;
 use phantom_core::ecs::{Entity, components::Name};
 
 use crate::{
-    actions::{Actions, Command, commands::summon_entity::CommandSummonEntity},
+    actions::{Actions, commands::summon_entity::CommandSummonEntity},
     context::EditorContext,
-    resources::ResourceKey,
 };
 
 pub struct HierarchyPanel {}
 
 impl HierarchyPanel {
-    pub fn new() -> Self {
-        Self {}
-    }
-
-    pub fn show(&mut self, ui: &mut Ui) {
+    pub fn show(ui: &mut Ui, ectx: &mut EditorContext, actions: &mut Actions) {
         ScrollArea::vertical().show(ui, |ui| {
-            let ctx = ui
-                .ctx()
-                .data(|r| {
-                    r.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
-                })
-                .unwrap();
-
             let entities_and_names: Vec<(Entity, String)> = {
-                let editor_ctx = ctx.lock().unwrap();
-                let world = &editor_ctx.active_world;
+                let world = &ectx.active_world;
                 world
                     .query_with::<Name>()
                     .iter()
@@ -38,9 +23,13 @@ impl HierarchyPanel {
                     })
                     .collect()
             };
+            let selected_entity = ectx.selected_entity;
+
+            let mut clicked: Option<Entity> = None;
+            let mut to_delete: Option<Entity> = None;
 
             for (entity, name) in entities_and_names {
-                let selected = ctx.lock().unwrap().selected_entity == Some(entity);
+                let selected = selected_entity == Some(entity);
                 // Make font black if selected
                 let font_color = if selected {
                     Color32::BLACK
@@ -69,17 +58,14 @@ impl HierarchyPanel {
 
                 if response.clicked() {
                     trace!("Selected entity: {}", entity);
-                    ctx.lock().unwrap().selected_entity = Some(entity);
+                    clicked = Some(entity);
                 }
 
                 response.context_menu(|ui| {
-                    standard_context_menu(ui);
-                    log::trace!("Deleted entity: {}", entity);
+                    standard_context_menu(ui, actions, ectx);
                     if ui.button("Delete entity").clicked() {
-                        let mut editor_ctx = ctx.lock().unwrap();
-                        let world = &mut editor_ctx.active_world;
-                        world.destroy(entity);
-                    };
+                        to_delete = Some(entity);
+                    }
                 });
             }
             // Outside of list
@@ -87,27 +73,23 @@ impl HierarchyPanel {
             let space = ui.allocate_space(size);
             ui.interact(space.1, space.0, Sense::click())
                 .context_menu(|ui| {
-                    standard_context_menu(ui);
+                    standard_context_menu(ui, actions, ectx);
                 });
+
+            if let Some(entity) = clicked {
+                ectx.selected_entity = Some(entity);
+            }
+            if let Some(entity) = to_delete {
+                trace!("Deleted entity: {}", entity);
+                ectx.active_world.destroy(entity);
+            }
         });
     }
 }
 
-fn standard_context_menu(ui: &mut Ui) {
+/// Shared right-click menu. Summons a new empty entity through the action stack.
+fn standard_context_menu(ui: &mut Ui, actions: &mut Actions, ectx: &mut EditorContext) {
     if ui.button("Summon Empty").clicked() {
-        if let Some(actions) = ui
-            .ctx()
-            .data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new(ResourceKey::Actions)))
-        {
-            let mut actions = actions.lock().unwrap();
-            let ctx = ui
-                .ctx()
-                .data(|r| {
-                    r.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
-                })
-                .unwrap();
-
-            actions.do_command(Box::new(CommandSummonEntity::new()), &ctx);
-        }
+        actions.do_command(Box::new(CommandSummonEntity::new()), ectx);
     }
 }

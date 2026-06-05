@@ -1,5 +1,3 @@
-use std::sync::{Arc, Mutex};
-
 use log::*;
 use phantom_core::ecs::Entity;
 
@@ -10,8 +8,8 @@ pub struct CommandSummonEntity {
 }
 
 impl Command for CommandSummonEntity {
-    fn execute(&mut self, ctx: &Arc<Mutex<EditorContext>>) {
-        let world = &mut ctx.lock().unwrap().active_world;
+    fn execute(&mut self, ctx: &mut EditorContext) {
+        let world = &mut ctx.active_world;
         if self.spawned_entity.is_none() {
             self.spawned_entity = Some(world.summon());
             trace!(
@@ -28,8 +26,8 @@ impl Command for CommandSummonEntity {
         }
     }
 
-    fn undo(&mut self, ctx: &Arc<Mutex<EditorContext>>) {
-        let world = &mut ctx.lock().unwrap().active_world;
+    fn undo(&mut self, ctx: &mut EditorContext) {
+        let world = &mut ctx.active_world;
         world.destroy(self.spawned_entity.unwrap());
         trace!(
             "Undoing summon entity command entity: {}",

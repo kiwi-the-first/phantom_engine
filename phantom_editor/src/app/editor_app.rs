@@ -1,29 +1,12 @@
-use std::collections::HashMap;
 use std::path::PathBuf;
 use std::sync::Arc;
-use std::sync::Mutex;
 
 use anyhow::anyhow;
-use egui::CornerRadius;
-use egui::Id;
-
-use egui::Key;
-use egui::Modifiers;
-use egui::Vec2;
-use egui::include_image;
-use egui_dock::DockState;
-use egui_dock::NodeIndex;
-use egui_dock::NodePath;
-use egui_dock::SurfaceIndex;
 use egui_wgpu::ScreenDescriptor;
 use egui_wgpu::wgpu;
-use egui_wgpu::wgpu::TextureView;
-use egui_wgpu::wgpu::wgt::TextureViewDescriptor;
 use phantom_common::dirs;
-use phantom_core::input::input_context::ViewportInfo;
 use phantom_core::scripting::ScriptContext;
 use phantom_project::project_manager::project_manager::ProjectManager;
-use phantom_runtime::renderer::scene_renderer::SceneRenderer;
 use winit::application::ApplicationHandler;
 use winit::event::{KeyEvent, WindowEvent};
 use winit::event_loop::ControlFlow;
@@ -38,33 +21,22 @@ use phantom_runtime::renderer::state::State;
 
 use crate::actions::Actions;
 use crate::context::EditorContext;
+use crate::dock::DockManager;
 use crate::egui::egui_renderer::EguiRenderer;
-use crate::logger::Logger;
-use crate::menus::file::FileMenu;
-use crate::menus::view::ViewMenu;
-use crate::menus::view::ViewMenuAction;
-use crate::panels::Panels;
-use crate::persitance::layout;
-use crate::resources::ResourceKey;
-use crate::workspaces::BuiltInWorkspace;
-use crate::workspaces::Workspace;
-use crate::workspaces::WorkspaceConfig;
-use crate::workspaces::WorkspaceKind;
-use crate::workspaces::WorkspaceViewer;
+use crate::logger::PhantomLogger;
+use crate::panels::Viewport;
+use crate::shortcuts::EditorShortcuts;
+use crate::top_bar::TopBar;
 
 pub struct EditorApp {
     state: Option<State>,
     egui_renderer: Option<EguiRenderer>,
     scale_factor: f32,
     is_closing: bool,
-    available_workspaces: HashMap<String, WorkspaceConfig>,
-    dock_state: DockState<Workspace>,
-    workspace_viewer: WorkspaceViewer,
-    view_port_texture: Option<wgpu::Texture>,
-    current_viewport_size: Option<egui::Vec2>,
-    scene_renderer: Option<SceneRenderer>,
-    viewport_view: Option<TextureView>,
-    editor_context: Option<Arc<Mutex<EditorContext>>>,
+    dock: DockManager,
+    editor_context: Option<EditorContext>,
+    actions: Actions,
+    viewport: Option<Viewport>,
 }
 
 impl ApplicationHandler<State> for EditorApp {
@@ -85,7 +57,7 @@ impl ApplicationHandler<State> for EditorApp {
         let mut egui_renderer =
             EguiRenderer::new(&window, &state.device, state.surface_format(), None, 1);
 
-        let mut ectx = self.editor_context.as_ref().unwrap().lock().unwrap();
+        let ectx = self.editor_context.as_mut().unwrap();
 
         // LOAD TEXTURES ON STARTUP
         ectx.sync_assets().expect("COULD NOT LOAD ASSETS");
@@ -100,60 +72,17 @@ impl ApplicationHandler<State> for EditorApp {
             log::error!("FAILED TO LOAD GAME WORLD! {e}");
         }
 
-        drop(ectx);
-
-        // GENERATE VIEWPORT TEXTURE
-        let view_port_texture = state.device.create_texture(&wgpu::TextureDescriptor {
-            label: Some("viewport"),
-            size: wgpu::Extent3d {
-                width: self.current_viewport_size.unwrap().x as u32,
-                height: self.current_viewport_size.unwrap().y as u32,
-                depth_or_array_layers: 1,
-            },
-            mip_level_count: 1,
-            sample_count: 1,
-            dimension: wgpu::TextureDimension::D2,
-            format: wgpu::TextureFormat::Rgba8Unorm,
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
-            view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
-        });
-
-        let mut scene_renderer = SceneRenderer::new(
+        // The viewport owns its render target, scene renderer, and egui texture handle.
+        let viewport = Viewport::new(
             &state.device,
             &state.queue,
-            wgpu::TextureFormat::Rgba8UnormSrgb,
+            &mut egui_renderer,
+            egui::Vec2::new(800.0, 600.0),
         );
-
-        scene_renderer.resize(
-            &state.device,
-            self.current_viewport_size.unwrap().x as u32,
-            self.current_viewport_size.unwrap().y as u32,
-        );
-
-        let viewport_view = view_port_texture.create_view(&Default::default());
-
-        let texture_id = egui_renderer.wgpu_renderer.register_native_texture(
-            &state.device,
-            &viewport_view,
-            wgpu::FilterMode::Linear,
-        );
-
-        let actions = Arc::new(Mutex::new(Actions::new()));
-
-        egui_renderer.context().data_mut(|w| {
-            w.insert_temp(Id::new(ResourceKey::ViewportTexture), texture_id);
-            w.insert_temp(Id::new(ResourceKey::Actions), actions);
-            w.insert_temp(
-                Id::new(ResourceKey::EditorContext),
-                self.editor_context.take().unwrap(),
-            );
-        });
 
         self.state = Some(state);
         self.egui_renderer = Some(egui_renderer);
-        self.view_port_texture = Some(view_port_texture);
-        self.scene_renderer = Some(scene_renderer);
-        self.viewport_view = Some(viewport_view);
+        self.viewport = Some(viewport);
     }
     #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
@@ -169,12 +98,8 @@ impl ApplicationHandler<State> for EditorApp {
             }
         }
 
-        if let Some(egui_renderer) = &mut self.egui_renderer {
-            if let Some(ectx) = &egui_renderer.context().data_mut(|w| {
-                w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
-            }) {
-                let mut ectx_lock = ectx.lock().unwrap();
-                let input_system = ectx_lock.input_system.as_mut().unwrap();
+        if let Some(ectx) = self.editor_context.as_mut() {
+            if let Some(input_system) = ectx.input_system.as_mut() {
                 input_system.handle_event(&event);
             }
         }
@@ -232,26 +157,17 @@ impl ApplicationHandler<State> for EditorApp {
             return;
         }
 
-        self.prepare_ui_context();
         self.handle_redraw();
 
-        if let Some(egui_renderer) = &mut self.egui_renderer {
-            let viewport_info = egui_renderer
-                .context()
-                .data(|d| d.get_temp::<ViewportInfo>(Id::new(ResourceKey::ViewportInfo)));
-
-            if let Some(ectx) = &egui_renderer.context().data_mut(|w| {
-                w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
-            }) {
-                let mut ectx_lock = ectx.lock().unwrap();
-                let input_system = ectx_lock.input_system.as_mut().unwrap();
-
+        let viewport_info = self.viewport.as_ref().and_then(|v| v.info());
+        if let Some(ectx) = self.editor_context.as_mut() {
+            if let Some(input_system) = ectx.input_system.as_mut() {
                 if let Some(info) = viewport_info {
                     input_system.set_viewport(info);
                 }
                 input_system.end_frame();
-
-                let time_system = ectx_lock.time_system.as_mut().unwrap();
+            }
+            if let Some(time_system) = ectx.time_system.as_mut() {
                 time_system.tick();
             }
         }
@@ -260,89 +176,34 @@ impl ApplicationHandler<State> for EditorApp {
 
 impl EditorApp {
     pub fn new() -> Self {
-        let mut available_workspaces = HashMap::new();
-
-        available_workspaces.insert(
-            "Level Editor".to_string(),
-            WorkspaceConfig {
-                name: "Level Editor".to_string(),
-                kind: WorkspaceKind::BuiltIn(BuiltInWorkspace::LevelEditor),
-                panels: vec![
-                    Panels::Viewport,
-                    Panels::Hierarchy,
-                    Panels::Inspector,
-                    Panels::Console,
-                    Panels::AssetBrowser,
-                ],
-            },
-        );
-
-        let mut level_editor = Workspace::new(
-            "Level Editor".to_string(),
-            vec![
-                Panels::Viewport,
-                Panels::Hierarchy,
-                Panels::Inspector,
-                Panels::Console,
-                Panels::AssetBrowser,
-            ],
-        );
-        if let Some(layout) = layout::load("Level Editor".to_string()).ok() {
-            level_editor.panel_dock_state = layout;
-        }
-
-        let default_open_workspaces = vec![level_editor];
-        let mut dock_state = DockState::new(default_open_workspaces);
-        // Set active tab to first tab
-        dock_state.set_focused_node_and_surface(NodePath::new(SurfaceIndex(0), NodeIndex(0)));
         Self {
             state: None,
             egui_renderer: None,
             scale_factor: 1.0,
             is_closing: false,
-            dock_state: dock_state,
-            available_workspaces,
-            workspace_viewer: WorkspaceViewer::new(),
-            view_port_texture: None,
-            current_viewport_size: Some(Vec2::new(600.0, 800.0)),
-            viewport_view: None,
-            scene_renderer: None,
+            dock: DockManager::new(),
             editor_context: None,
+            actions: Actions::new(),
+            viewport: None,
         }
     }
 
     pub fn run(project_path: PathBuf) -> anyhow::Result<()> {
         let (project, init_world) = ProjectManager::load(project_path.clone())?;
-        let editor_context = EditorContext::new(project_path, project, init_world);
 
-        if let Some(_file) = Logger::create_log_file() {
-            env_logger::Builder::new()
-                .target(env_logger::Target::Stdout)
-                //.target(env_logger::Target::Pipe(Box::new(file)))
-                .filter_module("phantom_editor", log::LevelFilter::Trace)
-                .filter_module("phantom_runtime", log::LevelFilter::Trace)
-                .init();
-        } else {
-            log::trace!(
-                "FAILED TO CREATE LOG FILE AT {}",
-                dirs::SystemDirs::cache().unwrap().to_str().unwrap()
-            );
-            env_logger::init();
-        }
+        let logger = PhantomLogger::new();
+        let buffer = logger.buffer.clone();
+        log::set_boxed_logger(Box::new(logger)).unwrap();
+        log::set_max_level(log::LevelFilter::Debug);
 
+        let editor_context = EditorContext::new(project_path, project, init_world, buffer);
         let event_loop = EventLoop::with_user_event().build()?;
         let mut app = EditorApp::new();
-        app.editor_context = Some(Arc::new(Mutex::new(editor_context)));
+        app.editor_context = Some(editor_context);
         event_loop.run_app(&mut app)?;
         Ok(())
     }
 
-    pub fn open_workspaces(&mut self, name: &str) {
-        if let Some(config) = self.available_workspaces.get(name) {
-            let workspace = Workspace::new(config.name.clone(), config.panels.clone());
-            self.dock_state.push_to_first_leaf(workspace);
-        }
-    }
     fn create_window_icon(&self) -> anyhow::Result<Icon> {
         let icon_bytes = include_bytes!("../images/phantom_engine_icon_256.png");
 
@@ -359,171 +220,63 @@ impl EditorApp {
 
         Ok(icon)
     }
-    fn prepare_ui_context(&mut self) {
-        let active_workspace_name = self
-            .dock_state
-            .find_active_focused()
-            .unwrap()
-            .1
-            .name
-            .clone();
-
-        let active_builtin_workspace_type: Option<BuiltInWorkspace> = match self
-            .available_workspaces
-            .get(&active_workspace_name)
-            .unwrap()
-            .kind
-        {
-            WorkspaceKind::BuiltIn(wtype) => Some(wtype),
-            WorkspaceKind::Custom => None,
-        };
-
-        let available_workspaces: Vec<String> = self.available_workspaces.keys().cloned().collect();
-
-        // INSERT RESOURCES TO BE USED BY EGUI PANELS AND MENUS
-        self.egui_renderer
-            .as_mut()
-            .unwrap()
-            .context()
-            .data_mut(|w| {
-                w.insert_temp(
-                    Id::new(ResourceKey::ActiveWorkspaceName),
-                    active_workspace_name,
-                );
-                w.insert_temp(
-                    Id::new(ResourceKey::AvailableWorkspaces),
-                    available_workspaces,
-                );
-                w.insert_temp(
-                    Id::new(ResourceKey::ActiveWorkspaceBuiltInType),
-                    active_builtin_workspace_type,
-                )
-            });
-    }
-
-    fn handle_resize(&mut self, viewport_size: Vec2, texture_id: egui::TextureId) {
-        if self.current_viewport_size.unwrap_or(Vec2::ZERO) != viewport_size {
-            log::trace!(
-                "viewport size changed from {:?} to {:?}",
-                self.current_viewport_size,
-                viewport_size
-            );
-            let view_port_texture =
-                self.state
-                    .as_ref()
-                    .unwrap()
-                    .device
-                    .create_texture(&wgpu::TextureDescriptor {
-                        label: Some("viewport"),
-                        size: wgpu::Extent3d {
-                            width: viewport_size.x as u32,
-                            height: viewport_size.y as u32,
-                            depth_or_array_layers: 1,
-                        },
-                        mip_level_count: 1,
-                        sample_count: 1,
-                        dimension: wgpu::TextureDimension::D2,
-                        format: wgpu::TextureFormat::Rgba8Unorm,
-                        usage: wgpu::TextureUsages::RENDER_ATTACHMENT
-                            | wgpu::TextureUsages::TEXTURE_BINDING,
-                        view_formats: &[wgpu::TextureFormat::Rgba8UnormSrgb],
-                    });
-
-            let viewport_view = view_port_texture.create_view(&Default::default());
-
-            let _texture_id = self
-                .egui_renderer
-                .as_mut()
-                .unwrap()
-                .wgpu_renderer
-                .update_egui_texture_from_wgpu_texture(
-                    &self.state.as_ref().unwrap().device,
-                    &viewport_view,
-                    wgpu::FilterMode::Linear,
-                    texture_id,
-                );
-
-            self.scene_renderer.as_mut().unwrap().resize(
-                &self.state.as_ref().unwrap().device,
-                viewport_size.x as u32,
-                viewport_size.y as u32,
-            );
-
-            self.view_port_texture = Some(view_port_texture);
-            self.viewport_view = Some(viewport_view);
-            self.current_viewport_size = Some(viewport_size);
-        }
-    }
 
     fn handle_redraw(&mut self) {
-        let state = self.state.as_mut().unwrap();
-
         // Attempt to handle minimizing window
-        if let Some(min) = state.window.is_minimized() {
-            if min {
-                println!("Window is minimized");
+        if let Some(state) = &self.state {
+            if let Some(true) = state.window.is_minimized() {
                 return;
             }
         }
 
-        let screen_descriptor = ScreenDescriptor {
-            size_in_pixels: [state.config.width, state.config.height],
-            pixels_per_point: state.window.as_ref().scale_factor() as f32 * self.scale_factor,
-        };
+        let scale_factor = self.scale_factor;
 
-        let output = match state.surface.get_current_texture() {
-            wgpu::CurrentSurfaceTexture::Success(texture) => texture,
-            wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture, // Use it but should reconfigure
-            _ => {
-                log::warn!("Surface error, skipping frame");
-                return;
-            }
-        };
+        // All borrows of `self` are confined to this block; the post-frame resize
+        // runs once they're released.
+        'redraw: {
+            let Self {
+                state,
+                egui_renderer,
+                editor_context,
+                actions,
+                dock,
+                viewport,
+                ..
+            } = self;
 
-        let surface_view = output.texture.create_view(&Default::default());
+            let state = state.as_mut().unwrap();
+            let egui_renderer = egui_renderer.as_mut().unwrap();
+            let editor_context = editor_context.as_mut().unwrap();
+            let viewport = viewport.as_mut().unwrap();
 
-        let viewport_render_view =
-            self.view_port_texture
-                .as_ref()
-                .unwrap()
-                .create_view(&TextureViewDescriptor {
-                    format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
-                    ..Default::default()
-                });
-
-        let mut encoder = state.device.create_command_encoder(&Default::default());
-        let egui_renderer = self.egui_renderer.as_mut().unwrap();
-        let ctx = egui_renderer.context();
-        if let Some(ectx) = &ctx.data_mut(|w| {
-            w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
-        }) {
-            let mut ectx_lock = ectx.lock().unwrap();
-            let world = &ectx_lock.active_world;
-            let size = glam::Vec2 {
-                x: self
-                    .current_viewport_size
-                    .unwrap_or(egui::Vec2::new(800.0, 600.0))
-                    .x,
-                y: self
-                    .current_viewport_size
-                    .unwrap_or(egui::Vec2::new(800.0, 600.0))
-                    .y,
+            let screen_descriptor = ScreenDescriptor {
+                size_in_pixels: [state.config.width, state.config.height],
+                pixels_per_point: state.window.as_ref().scale_factor() as f32 * scale_factor,
             };
-            self.scene_renderer
-                .as_mut()
-                .unwrap()
-                .render(
-                    &state.device,
-                    &state.queue,
-                    &mut encoder,
-                    &viewport_render_view,
-                    &world,
-                    size,
-                )
-                .expect("RENDERING FAILED"); // this a terrible way to handle this error but rn im lazy
 
-            if ectx_lock.is_playing {
-                let (active_world, input_system, time_system) = ectx_lock
+            let output = match state.surface.get_current_texture() {
+                wgpu::CurrentSurfaceTexture::Success(texture) => texture,
+                wgpu::CurrentSurfaceTexture::Suboptimal(texture) => texture,
+                _ => {
+                    log::warn!("Surface error, skipping frame");
+                    break 'redraw;
+                }
+            };
+
+            let surface_view = output.texture.create_view(&Default::default());
+
+            let mut encoder = state.device.create_command_encoder(&Default::default());
+
+            // SCENE RENDER
+            viewport.render_scene(
+                &state.device,
+                &state.queue,
+                &mut encoder,
+                &editor_context.active_world,
+            );
+
+            if editor_context.is_playing {
+                let (active_world, input_system, time_system) = editor_context
                     .get_world_and_systems()
                     .expect("FAILED TO GET WORLD AND SYSTEMS!");
                 let script_ctx = ScriptContext {
@@ -535,167 +288,47 @@ impl EditorApp {
                     &script_ctx,
                 );
             }
-        }
 
-        let window = state.window.as_ref();
+            // Try to sync assets if there are none to sync this will skip.
+            if let Err(e) = editor_context.sync_assets() {
+                log::error!("Failed to sync assets: {}", e);
+            }
+            viewport.upload_textures(
+                &state.device,
+                &state.queue,
+                &editor_context.asset_manager.textures,
+            );
 
-        let mut view_menu_action = None;
-        {
-            let show_close = self.dock_state.iter_all_tabs().count() > 1;
-            let egui_renderer = self.egui_renderer.as_mut().unwrap();
-
+            // EGUI FRAME
+            let window = state.window.as_ref();
+            let ctx = egui_renderer.context().clone();
             egui_renderer.begin_frame(window);
-            let ctx = egui_renderer.context();
 
-            let (should_undo, should_redo) = ctx.input_mut(|i| {
-                let redo = i.consume_key(Modifiers::COMMAND | Modifiers::SHIFT, Key::Z);
-                let undo = i.consume_key(Modifiers::COMMAND, Key::Z);
-                (undo, redo)
-            });
+            EditorShortcuts::handle(&ctx, actions, editor_context);
 
-            if should_undo {
-                if let Some(actions) = ctx
-                    .data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new(ResourceKey::Actions)))
-                {
-                    let mut actions = actions.lock().unwrap();
-                    actions.undo(
-                        &ctx.data_mut(|w| {
-                            w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(
-                                ResourceKey::EditorContext,
-                            ))
-                        })
-                        .unwrap(),
-                    );
-                }
-            }
-            if should_redo {
-                if let Some(actions) = ctx
-                    .data_mut(|w| w.get_temp::<Arc<Mutex<Actions>>>(Id::new(ResourceKey::Actions)))
-                {
-                    let mut actions = actions.lock().unwrap();
-                    actions.redo(
-                        &ctx.data_mut(|w| {
-                            w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(
-                                ResourceKey::EditorContext,
-                            ))
-                        })
-                        .unwrap(),
-                    );
-                }
-            }
-
-            // Try to sync assets if there are no assets to sync this will skip
-            if let Some(ectx) = &ctx.data_mut(|w| {
-                w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(ResourceKey::EditorContext))
-            }) {
-                if let Err(e) = ectx.lock().unwrap().sync_assets() {
-                    log::error!("Failed to sync assets: {}", e);
-                }
-
-                let ectx_lock = ectx.lock().unwrap();
-                let textures = &ectx_lock.asset_manager.textures;
-                self.scene_renderer.as_mut().unwrap().upload_textures(
-                    &state.device,
-                    &state.queue,
-                    &textures,
-                );
-            }
-
+            // EGUI THEMEING (todo: move me make a proper theming system)
             let mut visuals = ctx.style().visuals.clone();
             let black = egui::Color32::BLACK;
-            visuals.window_fill = black.clone();
-            visuals.panel_fill = black.clone();
-            visuals.extreme_bg_color = black.clone();
+            visuals.window_fill = black;
+            visuals.panel_fill = black;
+            visuals.extreme_bg_color = black;
             visuals.selection.bg_fill = egui::Color32::from_hex("#8959d5").unwrap();
             visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
-
             let screen_rect = ctx.viewport_rect();
-
             ctx.set_visuals(visuals);
 
-            //DRAW HERE
-
-            egui::Area::new("main_dock_area".into()).show(ctx, |ui| {
+            // DRAW HERE
+            egui::Area::new("main_dock_area".into()).show(&ctx, |ui| {
                 ui.set_max_size(screen_rect.size());
 
                 ui.vertical(|ui| {
-                    egui::Panel::top("menu_bar").show_inside(ui, |ui| {
-                        ui.allocate_ui(egui::vec2(ui.available_width(), 0.0), |ui| {
-                            ui.horizontal_top(|ui| {
-                                ui.add(
-                                    egui::Image::new(include_image!(
-                                        "../images/phantom_engine_icon_glow_256.png"
-                                    ))
-                                    .fit_to_exact_size(egui::vec2(48.0, 48.0)),
-                                );
-
-                                ui.vertical(|ui| {
-                                    egui::MenuBar::new().ui(ui, |ui| {
-                                        ui.menu_button("File", |ui| {
-                                            FileMenu::show(ui);
-                                        });
-                                        ui.menu_button("Edit", |ui| {});
-                                        ui.menu_button("Tools", |ui| {});
-                                        ui.menu_button("View", |ui| {
-                                            view_menu_action = ViewMenu::show(ui)
-                                        });
-                                        ui.menu_button("Help", |ui| {});
-                                        ui.menu_button("Editor", |ui| {});
-                                    });
-
-                                    // Play and Stop buttons
-                                    ui.horizontal(|ui| {
-                                        ui.add_space(ui.available_width() / 2.0 - 40.0);
-                                        ui.style_mut().visuals.widgets.inactive.corner_radius =
-                                            CornerRadius::from(1.0);
-                                        ui.style_mut().visuals.widgets.hovered.corner_radius =
-                                            CornerRadius::from(1.0);
-                                        ui.style_mut().visuals.widgets.active.corner_radius =
-                                            CornerRadius::from(1.0);
-
-                                        let play_clicked = ui
-                                            .add_sized([40.0, 20.0], egui::Button::new("▶"))
-                                            .clicked();
-
-                                        ui.add_space(-5.0);
-
-                                        let stop_clicked = ui
-                                            .add_sized([40.0, 20.0], egui::Button::new("■"))
-                                            .clicked();
-
-                                        if play_clicked || stop_clicked {
-                                            if let Some(ectx) = ctx.data_mut(|w| {
-                                                w.get_temp::<Arc<Mutex<EditorContext>>>(Id::new(
-                                                    ResourceKey::EditorContext,
-                                                ))
-                                            }) {
-                                                let mut ectx_lock = ectx.lock().unwrap();
-                                                if play_clicked {
-                                                    ectx_lock.start_playing();
-                                                }
-                                                if stop_clicked {
-                                                    ectx_lock.stop_playing();
-                                                }
-                                            }
-                                        }
-                                    });
-                                });
-                            });
-                        });
-                    });
-
-                    egui_dock::DockArea::new(&mut self.dock_state)
-                        .show_leaf_collapse_buttons(false)
-                        .show_leaf_close_all_buttons(false)
-                        .show_close_buttons(show_close)
-                        .draggable_tabs(false)
-                        .style(egui_dock::Style::from_egui(ui.style().as_ref()))
-                        .show_inside(ui, &mut self.workspace_viewer);
+                    TopBar::show(ui, editor_context, dock);
+                    dock.ui(ui, editor_context, actions, viewport);
                 });
             });
 
             //END DRAW
-            self.egui_renderer.as_mut().unwrap().end_frame_and_draw(
+            egui_renderer.end_frame_and_draw(
                 &state.device,
                 &state.queue,
                 &mut encoder,
@@ -703,56 +336,23 @@ impl EditorApp {
                 &surface_view,
                 screen_descriptor,
             );
+
+            state.queue.submit(Some(encoder.finish()));
+            output.present();
         }
 
-        state.queue.submit(Some(encoder.finish()));
-        output.present();
-
-        let (viewport_info, texture_id) = {
-            let egui_renderer = self.egui_renderer.as_ref().unwrap();
-            let ctx = egui_renderer.context();
-            (
-                ctx.data(|r| r.get_temp::<ViewportInfo>(Id::new(ResourceKey::ViewportInfo))),
-                ctx.data(|r| r.get_temp::<egui::TextureId>(Id::new(ResourceKey::ViewportTexture))),
-            )
-        };
-        if let (Some(viewport_info), Some(texture_id)) = (viewport_info, texture_id) {
-            self.handle_resize(
-                egui::Vec2 {
-                    x: viewport_info.size.x,
-                    y: viewport_info.size.y,
-                },
-                texture_id,
-            );
-        }
-
-        match view_menu_action {
-            Some(ViewMenuAction::OpenWorkspace(name)) => {
-                self.open_workspaces(&name);
-            }
-            Some(ViewMenuAction::SaveLayout) => {
-                let workspace = self.dock_state.find_active_focused().unwrap();
-                let name = workspace.1.name.clone();
-                let dock_state = workspace.1.panel_dock_state.clone();
-                layout::save(name, &dock_state).expect("failed to save");
-            }
-            Some(ViewMenuAction::LoadCustomLayout(name)) => {
-                let layout = layout::load(name).unwrap();
-                self.dock_state
-                    .find_active_focused()
-                    .unwrap()
-                    .1
-                    .panel_dock_state = layout;
-            }
-            Some(ViewMenuAction::LoadDefaultLayout(workspace_type)) => {
-                let layout = layout::load_default(workspace_type).unwrap();
-                self.dock_state
-                    .find_active_focused()
-                    .unwrap()
-                    .1
-                    .panel_dock_state = layout;
-            }
-            None => {}
+        // POST-FRAME (no borrows of `self` alive)
+        // The viewport recreates its render target if the panel was resized this frame.
+        let Self {
+            state,
+            egui_renderer,
+            viewport,
+            ..
+        } = self;
+        if let (Some(state), Some(egui_renderer), Some(viewport)) =
+            (state.as_ref(), egui_renderer.as_mut(), viewport.as_mut())
+        {
+            viewport.apply_resize(&state.device, egui_renderer);
         }
     }
 }
