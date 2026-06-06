@@ -1,5 +1,6 @@
 pub mod app;
 pub use app::App;
+pub mod audio;
 pub mod asset_manager;
 pub mod game_loader;
 pub mod renderer;

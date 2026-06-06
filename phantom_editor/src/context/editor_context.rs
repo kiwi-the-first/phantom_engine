@@ -8,6 +8,7 @@ use anyhow::{Ok, Result, anyhow};
 use libloading::Library;
 use phantom_build::BuildSystem;
 use phantom_core::{
+    audio::AudioContext,
     ecs::{Entity, World},
     input::{InputSystem, input_system},
     scripting::{ScriptContext, script_scheduler::ScriptScheduler},
@@ -18,6 +19,7 @@ use phantom_project::{
 };
 use phantom_runtime::{
     asset_manager::asset_manager::{self, AssetManager},
+    audio::AudioSystem,
     game_loader::game_loader::GameLoader,
 };
 
@@ -35,6 +37,7 @@ pub struct EditorContext {
     pub world_snapshot: Option<Vec<u8>>,
     pub input_system: Option<InputSystem>,
     pub time_system: Option<TimeSystem>,
+    pub audio_system: AudioSystem,
 }
 
 impl EditorContext {
@@ -59,6 +62,7 @@ impl EditorContext {
             world_snapshot: None,
             input_system: Some(input_system),
             time_system: Some(time_system),
+            audio_system: AudioSystem::default(),
         }
     }
 
@@ -181,9 +185,12 @@ impl EditorContext {
             let script_ctx = ScriptContext {
                 input: &input_system.input_ctx,
                 time: &time_system.time_ctx,
+                audio: &self.audio_system.audio_ctx,
             };
             ScriptScheduler::run_all_start_scripts(&mut self.active_world, &script_ctx);
         }
+        // Play any sounds the start scripts queued.
+        self.audio_system.update();
     }
 
     pub fn stop_playing(&mut self) {
@@ -192,13 +199,19 @@ impl EditorContext {
         }
         self.is_playing = false;
         self.world_snapshot = None;
+        self.audio_system.stop_all();
     }
 
     pub fn get_world_and_systems(
         &mut self,
-    ) -> Result<(&mut World, &mut InputSystem, &mut TimeSystem)> {
+    ) -> Result<(&mut World, &mut InputSystem, &mut TimeSystem, &AudioContext)> {
         if let (Some(input), Some(time)) = (self.input_system.as_mut(), self.time_system.as_mut()) {
-            Ok((&mut self.active_world, input, time))
+            Ok((
+                &mut self.active_world,
+                input,
+                time,
+                &self.audio_system.audio_ctx,
+            ))
         } else {
             Err(anyhow!("FAILED TO FETCH SYSTEMS!"))
         }

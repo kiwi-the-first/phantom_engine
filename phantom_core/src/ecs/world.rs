@@ -105,6 +105,17 @@ impl World {
         }
     }
 
+    pub fn remove_component_by_name(&mut self, entity: Entity, component_name: &str) {
+        if let Some(remove_fn) = crate::ecs::component_registry::get_remove_fn(component_name) {
+            remove_fn(self, entity);
+        } else {
+            warn!(
+                "Failed to remove component '{}': component not registered",
+                component_name
+            );
+        }
+    }
+
     pub fn get_component<C: Component>(&self, entity: Entity) -> Option<&C> {
         if entity.generation != self.generations[entity.id as usize] {
             return None;

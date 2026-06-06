@@ -5,6 +5,7 @@ use std::sync::{Mutex, OnceLock};
 pub struct ComponentEntry(
     pub fn(&[u8]) -> Box<dyn AnyStorage>,          // deserialize_fn
     pub fn(Entity) -> Box<dyn FnOnce(&mut World)>, // add_default_fn
+    pub fn(&mut World, Entity),                    // remove_fn
     pub bool,                                      // is_builtin
 );
 
@@ -15,7 +16,7 @@ pub fn clear_game_components() {
     let registry = COMPONENT_REGISTRY.get().unwrap();
     let mut guard = registry.lock().unwrap();
     // Only remove game components, keep built-in ones (Transform, Name, Camera, etc)
-    guard.retain(|_, entry| entry.2);
+    guard.retain(|_, entry| entry.3);
 }
 
 pub fn get_component_registry_ptr() -> *mut HashMap<&'static str, ComponentEntry> {
@@ -52,4 +53,9 @@ pub fn add_component_by_name(world: &mut World, entity: Entity, component_name: 
 pub fn get_registered_component_names() -> Vec<String> {
     let components = COMPONENT_REGISTRY.get().unwrap().lock().unwrap();
     components.keys().map(|s| s.to_string()).collect()
+}
+
+pub fn get_remove_fn(component_name: &str) -> Option<fn(&mut World, Entity)> {
+    let registry = COMPONENT_REGISTRY.get()?.lock().unwrap();
+    registry.get(component_name).map(|entry| entry.2)
 }

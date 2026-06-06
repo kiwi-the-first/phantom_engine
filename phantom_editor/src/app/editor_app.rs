@@ -267,6 +267,11 @@ impl EditorApp {
 
             let mut encoder = state.device.create_command_encoder(&Default::default());
 
+            // Pin anchored UI to the camera before drawing (runs in edit mode too,
+            // so anchored sprites preview correctly).
+            let viewport_size = glam::Vec2::new(viewport.size().x, viewport.size().y);
+            phantom_core::ui::update_anchors(&mut editor_context.active_world, viewport_size);
+
             // SCENE RENDER
             viewport.render_scene(
                 &state.device,
@@ -276,17 +281,22 @@ impl EditorApp {
             );
 
             if editor_context.is_playing {
-                let (active_world, input_system, time_system) = editor_context
-                    .get_world_and_systems()
-                    .expect("FAILED TO GET WORLD AND SYSTEMS!");
-                let script_ctx = ScriptContext {
-                    input: &input_system.input_ctx,
-                    time: &time_system.time_ctx,
-                };
-                phantom_core::scripting::script_scheduler::ScriptScheduler::run_all_update_scripts(
-                    active_world,
-                    &script_ctx,
-                );
+                {
+                    let (active_world, input_system, time_system, audio_ctx) = editor_context
+                        .get_world_and_systems()
+                        .expect("FAILED TO GET WORLD AND SYSTEMS!");
+                    let script_ctx = ScriptContext {
+                        input: &input_system.input_ctx,
+                        time: &time_system.time_ctx,
+                        audio: audio_ctx,
+                    };
+                    phantom_core::scripting::script_scheduler::ScriptScheduler::run_all_update_scripts(
+                        active_world,
+                        &script_ctx,
+                    );
+                }
+                // Drain sounds the update scripts queued, then reap finished ones.
+                editor_context.audio_system.update();
             }
 
             // Try to sync assets if there are none to sync this will skip.

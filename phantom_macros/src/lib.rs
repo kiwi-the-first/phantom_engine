@@ -138,6 +138,14 @@ fn gen_add_default_fn(add_default_fn: &syn::Ident, struct_name: &syn::Ident) -> 
     }
 }
 
+fn gen_remove_fn(remove_fn: &syn::Ident, struct_name: &syn::Ident) -> TokenStream2 {
+    quote! {
+        fn #remove_fn(world: &mut ::phantom_core::ecs::World, entity: ::phantom_core::ecs::Entity) {
+            world.remove_component::<#struct_name>(entity);
+        }
+    }
+}
+
 // ── #[component] ─────────────────────────────────────────────────────────────
 
 #[proc_macro_attribute]
@@ -148,12 +156,14 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let deserialize_fn = quote::format_ident!("__phantom_deserialize_{}", lower);
     let add_default_fn = quote::format_ident!("__phantom_add_default_{}", lower);
+    let remove_fn = quote::format_ident!("__phantom_remove_{}", lower);
     let register_fn = quote::format_ident!("__phantom_register_{}", lower);
 
     let inspectable = extract_inspectable_fields(&mut ast);
     let reflection = gen_reflection(&struct_name, &inspectable);
     let deserialize = gen_deserialize_fn(&deserialize_fn, &struct_name);
     let add_default = gen_add_default_fn(&add_default_fn, &struct_name);
+    let remove = gen_remove_fn(&remove_fn, &struct_name);
 
     quote! {
         #[derive(::phantom_core::serde::Serialize, ::phantom_core::serde::Deserialize)]
@@ -167,6 +177,7 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #reflection
         #deserialize
         #add_default
+        #remove
 
         pub fn #register_fn(
             comp_reg: &mut ::std::collections::HashMap<&'static str, ::phantom_core::ecs::component_registry::ComponentEntry>,
@@ -175,7 +186,7 @@ pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
             eprintln!("[register_{}] Starting registration", stringify!(#struct_name));
             comp_reg.insert(
                 <#struct_name as ::phantom_core::ecs::component::Component>::NAME,
-                ::phantom_core::ecs::component_registry::ComponentEntry(#deserialize_fn, #add_default_fn, false)
+                ::phantom_core::ecs::component_registry::ComponentEntry(#deserialize_fn, #add_default_fn, #remove_fn, false)
             );
             eprintln!("[register_{}] Registration completed", stringify!(#struct_name));
         }
@@ -192,6 +203,7 @@ pub fn script(_attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let deserialize_fn = quote::format_ident!("__phantom_deserialize_{}", lower);
     let add_default_fn = quote::format_ident!("__phantom_add_default_{}", lower);
+    let remove_fn = quote::format_ident!("__phantom_remove_{}", lower);
     let start_all_fn = quote::format_ident!("__phantom_start_all_{}", lower);
     let update_all_fn = quote::format_ident!("__phantom_update_all_{}", lower);
     let register_fn = quote::format_ident!("__phantom_register_{}", lower);
@@ -200,6 +212,7 @@ pub fn script(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let reflection = gen_reflection(&struct_name, &inspectable);
     let deserialize = gen_deserialize_fn(&deserialize_fn, &struct_name);
     let add_default = gen_add_default_fn(&add_default_fn, &struct_name);
+    let remove = gen_remove_fn(&remove_fn, &struct_name);
 
     quote! {
         #[derive(::phantom_core::serde::Serialize, ::phantom_core::serde::Deserialize)]
@@ -214,6 +227,7 @@ pub fn script(_attr: TokenStream, item: TokenStream) -> TokenStream {
         #reflection
         #deserialize
         #add_default
+        #remove
 
         fn #start_all_fn(world: &mut ::phantom_core::ecs::World, ctx: &::phantom_core::scripting::ScriptContext) {
             let entities = world.query_with::<#struct_name>();
@@ -253,7 +267,7 @@ pub fn script(_attr: TokenStream, item: TokenStream) -> TokenStream {
             eprintln!("[register_{}] Starting registration", stringify!(#struct_name));
             comp_reg.insert(
                 <#struct_name as ::phantom_core::ecs::component::Component>::NAME,
-                ::phantom_core::ecs::component_registry::ComponentEntry(#deserialize_fn, #add_default_fn, false)
+                ::phantom_core::ecs::component_registry::ComponentEntry(#deserialize_fn, #add_default_fn, #remove_fn, false)
             );
             script_reg.insert(
                 <#struct_name as ::phantom_core::ecs::component::Component>::NAME,

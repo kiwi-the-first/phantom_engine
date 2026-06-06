@@ -143,6 +143,11 @@ impl Viewport {
         self.texture_id
     }
 
+    /// Current offscreen render size — the `viewport_size` the scene is drawn at.
+    pub fn size(&self) -> Vec2 {
+        self.size
+    }
+
     /// Record the panel's requested size and current framing (set by the panel each frame).
     pub fn set_frame(&mut self, requested_size: Vec2, info: ViewportInfo) {
         self.requested_size = requested_size;

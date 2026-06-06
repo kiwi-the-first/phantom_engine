@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = [ "phantom_build", "phantom_cli", "phantom_common","phantom_core", "phantom_editor", "phantom_macros", "phantom_player", "phantom_project", "phantom_runtime"]
+members = ["phantom_assets", "phantom_build", "phantom_cli", "phantom_common","phantom_core", "phantom_editor", "phantom_macros", "phantom_player", "phantom_project", "phantom_runtime"]
 
 [workspace.dependencies]
 # internal
@@ -31,6 +31,7 @@ log          = "0.4.29"
 parking_lot  = "0.12.5"
 pollster     = "0.3"
 quote        = "1.0.45"
+rodio        = "0.22.2"
 serde        = { version = "1.0", features = ["derive"] }
 serde_json   = "1.0.149"
 syn          = "2.0.117"

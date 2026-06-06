@@ -1,4 +1,5 @@
 use crate::{
+    audio::AudioContext,
     input::InputContext,
     time::{time_context::TimeContext, time_system::TimeSystem},
 };
@@ -6,4 +7,5 @@ use crate::{
 pub struct ScriptContext<'c> {
     pub input: &'c InputContext,
     pub time: &'c TimeContext,
+    pub audio: &'c AudioContext,
 }

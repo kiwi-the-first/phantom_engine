@@ -1,5 +1,5 @@
 use egui::{Color32, Ui};
-use glam::{Quat, UVec2, Vec3};
+use glam::{Quat, UVec2, Vec2, Vec3};
 use phantom_core::{
     ecs::{Entity, World},
     reflecton::fields::Field,
@@ -24,6 +24,23 @@ impl<'a> FieldContext<'a> {
             {
                 let mut new_fields = self.fields.clone();
                 new_fields[self.index] = Field::F32(field_name, value);
+                self.world.set_component_fields(
+                    self.component_name.clone(),
+                    self.selected_entity,
+                    new_fields,
+                );
+            }
+        });
+    }
+    pub fn show_i32(&mut self, field_name: &'static str, mut value: i32) {
+        self.ui.horizontal(|ui| {
+            ui.label(field_name);
+            if ui
+                .add(egui::DragValue::new(&mut value).speed(0.1))
+                .changed()
+            {
+                let mut new_fields = self.fields.clone();
+                new_fields[self.index] = Field::I32(field_name, value);
                 self.world.set_component_fields(
                     self.component_name.clone(),
                     self.selected_entity,
@@ -86,6 +103,39 @@ impl<'a> FieldContext<'a> {
             {
                 let mut new_fields = self.fields.clone();
                 new_fields[self.index] = Field::Vec3(field_name, Vec3 { x, y, z });
+                self.world.set_component_fields(
+                    self.component_name.clone(),
+                    self.selected_entity,
+                    new_fields,
+                );
+            };
+        });
+    }
+
+    pub fn show_vec2(&mut self, field_name: &'static str, value: Vec2) {
+        let mut x = value.x;
+        let mut y = value.y;
+
+        self.ui.horizontal(|ui| {
+            ui.label(field_name);
+            if ui
+                .add(egui::DragValue::new(&mut x).prefix("X: ").speed(0.1))
+                .changed()
+            {
+                let mut new_fields = self.fields.clone();
+                new_fields[self.index] = Field::Vec2(field_name, Vec2 { x, y });
+                self.world.set_component_fields(
+                    self.component_name.clone(),
+                    self.selected_entity,
+                    new_fields,
+                );
+            };
+            if ui
+                .add(egui::DragValue::new(&mut y).prefix("Y: ").speed(0.1))
+                .changed()
+            {
+                let mut new_fields = self.fields.clone();
+                new_fields[self.index] = Field::Vec2(field_name, Vec2 { x, y });
                 self.world.set_component_fields(
                     self.component_name.clone(),
                     self.selected_entity,

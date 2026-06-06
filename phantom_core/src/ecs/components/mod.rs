@@ -8,3 +8,7 @@ pub mod name;
 pub use name::Name;
 
 pub mod camera;
+pub use camera::Camera;
+
+pub mod anchor;
+pub use anchor::Anchor;

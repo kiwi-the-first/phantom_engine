@@ -18,7 +18,15 @@ pub const MAX_ENTRIES: usize = 1000;
 /// records (winit 0.30 spams one per `Window::scale_factor`/`inner_size`/etc.
 /// call). The span *name* — e.g. `winit::Window::scale_factor` — becomes the
 /// message, so filtering by `"winit"` never matched; the target is the constant.
-const NOISY_TARGETS: [&str; 5] = ["tracing::span", "winit", "wgpu", "naga", "egui"];
+const NOISY_TARGETS: &[&str] = &[
+    "tracing::span",
+    "winit",
+    "wgpu",
+    "naga",
+    "egui",
+    "symphonia",
+    "calloop",
+];
 
 pub struct PhantomLogger {
     /// Shared with the Console panel so it can render recent entries.

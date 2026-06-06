@@ -7,19 +7,31 @@ use crate::context::EditorContext;
 pub struct FileMenu {}
 
 impl FileMenu {
-    pub fn show(ui: &mut Ui, editor: &mut EditorContext) {
+    pub fn show(ui: &mut Ui, ectx: &mut EditorContext) {
         if ui.button("Save Project").clicked() {
-            if let Err(e) = ProjectManager::save(editor.project_path.clone(), &editor.active_world) {
+            if ectx.is_playing {
+                log::warn!("YOU MUST EXIT PLAY MODE BEFORE SAVING!");
+                return;
+            };
+            if let Err(e) = ProjectManager::save(ectx.project_path.clone(), &ectx.active_world) {
                 log::error!("FAILED TO SAVE PROJECT! {e}");
             }
         };
         if ui.button("Build Game").clicked() {
-            if let Err(e) = BuildSystem::build(editor.project_path.clone()) {
+            if ectx.is_playing {
+                log::warn!("YOU MUST EXIT PLAY MODE BEFORE BUILDING!");
+                return;
+            };
+            if let Err(e) = BuildSystem::build(ectx.project_path.clone()) {
                 log::error!("FAILED TO BUILD PROJECT {e}");
             }
         }
         if ui.button("Reload Scripts").clicked() {
-            if let Err(e) = editor.reload_project() {
+            if ectx.is_playing {
+                log::warn!("YOU MUST EXIT PLAY MODE BEFORE RELOADING!");
+                return;
+            };
+            if let Err(e) = ectx.reload_project() {
                 log::error!("FAILED TO RELOAD SCRIPTS {e}");
             }
         }

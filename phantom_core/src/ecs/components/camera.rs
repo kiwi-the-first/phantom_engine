@@ -50,7 +50,12 @@ impl Component for Camera {
 fn __register_camera() {
     crate::ecs::component_registry::register_component(
         "Camera",
-        ComponentEntry(__deserialize_camera, __add_default_camera, true),
+        ComponentEntry(
+            __deserialize_camera,
+            __add_default_camera,
+            __remove_camera,
+            true,
+        ),
     );
 }
 
@@ -62,6 +67,10 @@ fn __add_default_camera(entity: Entity) -> Box<dyn FnOnce(&mut World)> {
     Box::new(move |world| {
         world.add_component(entity, Camera::default());
     })
+}
+
+fn __remove_camera(world: &mut World, entity: Entity) {
+    world.remove_component::<Camera>(entity);
 }
 
 impl Default for Camera {

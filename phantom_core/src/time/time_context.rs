@@ -1,7 +1,7 @@
 pub struct TimeContext {
     /// Time elapsed since the last frame in seconds.
     pub delta: f32,
-    /// Total time elapsed since the start of the game.
+    /// Total time elapsed since the start of the game in seconds.
     pub elapsed: f32,
 }
 

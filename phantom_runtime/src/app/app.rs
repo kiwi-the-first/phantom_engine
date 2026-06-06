@@ -1,5 +1,6 @@
 use std::sync::Arc;
 
+use crate::audio::AudioSystem;
 use glam::Vec2;
 use libloading::Library;
 use phantom_common::dirs::dirs::PlayerDirs;
@@ -30,6 +31,7 @@ pub struct App {
     asset_manager: Option<AssetManager>,
     input_system: Option<InputSystem>,
     time_system: Option<TimeSystem>,
+    audio_system: AudioSystem,
 
     /// Held to prevent drop from memory
     game_dylib: Option<Library>,
@@ -86,12 +88,16 @@ impl ApplicationHandler<State> for App {
 
         let time_system = TimeSystem::default();
         let input_system = InputSystem::default();
-        let script_ctx = ScriptContext {
-            input: &input_system.input_ctx,
-            time: &time_system.time_ctx,
-        };
-
-        ScriptScheduler::run_all_start_scripts(&mut world, &script_ctx);
+        {
+            let script_ctx = ScriptContext {
+                input: &input_system.input_ctx,
+                time: &time_system.time_ctx,
+                audio: &self.audio_system.audio_ctx,
+            };
+            ScriptScheduler::run_all_start_scripts(&mut world, &script_ctx);
+        }
+        // Play any sounds the start scripts queued.
+        self.audio_system.update();
 
         self.state = Some(state);
         self.scene_renderer = Some(scene_renderer);
@@ -186,14 +192,17 @@ impl ApplicationHandler<State> for App {
             .create_command_encoder(&wgpu::CommandEncoderDescriptor {
                 label: Some("Render Encoder"),
             });
-        if let Some(world) = &self.world {
+        let viewport_size = Vec2::new(state.config.width as f32, state.config.height as f32);
+        if let Some(world) = &mut self.world {
+            // Pin anchored UI to the camera before drawing.
+            phantom_core::ui::update_anchors(world, viewport_size);
             if let Err(e) = scene_renderer.render(
                 &state.device,
                 &state.queue,
                 &mut encoder,
                 &view,
                 world,
-                Vec2::new(state.config.width as f32, state.config.height as f32),
+                viewport_size,
             ) {
                 log::error!("Render failed: {e}");
             };
@@ -211,11 +220,16 @@ impl ApplicationHandler<State> for App {
             &mut self.time_system,
             &mut self.world,
         ) {
-            let script_ctx = ScriptContext {
-                input: &input_system.input_ctx,
-                time: &time_system.time_ctx,
-            };
-            ScriptScheduler::run_all_update_scripts(world, &script_ctx);
+            {
+                let script_ctx = ScriptContext {
+                    input: &input_system.input_ctx,
+                    time: &time_system.time_ctx,
+                    audio: &self.audio_system.audio_ctx,
+                };
+                ScriptScheduler::run_all_update_scripts(world, &script_ctx);
+            }
+            // Drain sounds the update scripts queued, then reap finished ones.
+            self.audio_system.update();
 
             input_system.set_viewport(viewport_info);
 
@@ -235,6 +249,7 @@ impl App {
             asset_manager: None,
             input_system: None,
             time_system: None,
+            audio_system: AudioSystem::default(),
         }
     }
 

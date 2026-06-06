@@ -29,7 +29,7 @@ impl Component for Name {
 fn __register_name() {
     crate::ecs::component_registry::register_component(
         "Name",
-        ComponentEntry(__deserialize_name, __add_default_name, true),
+        ComponentEntry(__deserialize_name, __add_default_name, __remove_name, true),
     );
 }
 
@@ -41,6 +41,10 @@ fn __add_default_name(entity: Entity) -> Box<dyn FnOnce(&mut World)> {
     Box::new(move |world| {
         world.add_component(entity, Name::default());
     })
+}
+
+fn __remove_name(world: &mut World, entity: Entity) {
+    world.remove_component::<Name>(entity);
 }
 
 impl Default for Name {

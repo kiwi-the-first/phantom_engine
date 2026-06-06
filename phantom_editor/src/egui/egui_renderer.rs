@@ -57,8 +57,12 @@ impl EguiRenderer {
         self.egui_state.egui_ctx()
     }
 
-    pub fn handle_input(&mut self, window: &Window, event: &WindowEvent) {
-        let _ = self.egui_state.on_window_event(window, event);
+    pub fn handle_input(
+        &mut self,
+        window: &Window,
+        event: &WindowEvent,
+    ) -> egui_winit::EventResponse {
+        self.egui_state.on_window_event(window, event)
     }
 
     pub fn ppp(&mut self, v: f32) {

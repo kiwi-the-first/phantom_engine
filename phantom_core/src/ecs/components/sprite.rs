@@ -36,7 +36,12 @@ impl Component for Sprite {
 fn __register_sprite() {
     crate::ecs::component_registry::register_component(
         "Sprite",
-        ComponentEntry(__deserialize_sprite, __add_default_sprite, true),
+        ComponentEntry(
+            __deserialize_sprite,
+            __add_default_sprite,
+            __remove_sprite,
+            true,
+        ),
     );
 }
 
@@ -48,6 +53,10 @@ fn __add_default_sprite(entity: Entity) -> Box<dyn FnOnce(&mut World)> {
     Box::new(move |world| {
         world.add_component(entity, Sprite::default());
     })
+}
+
+fn __remove_sprite(world: &mut World, entity: Entity) {
+    world.remove_component::<Sprite>(entity);
 }
 
 impl Sprite {

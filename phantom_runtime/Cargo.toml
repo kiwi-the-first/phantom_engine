@@ -11,6 +11,7 @@ bincode        = { workspace = true }
 env_logger     = { workspace = true }
 libloading     = { workspace = true }
 log            = { workspace = true }
+rodio          = { workspace = true }
 winit          = { workspace = true }
 wgpu           = { workspace = true }
 pollster       = { workspace = true }

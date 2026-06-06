@@ -1,4 +1,4 @@
-use egui::{RichText, Ui};
+use egui::{Layout, RichText, Ui};
 use phantom_core::{ecs::component_registry, reflecton::fields::Field};
 
 use crate::{context::EditorContext, panels::field_wigets::FieldContext};
@@ -19,9 +19,26 @@ impl InspectorPanel {
                     (_, "Name") => std::cmp::Ordering::Greater,
                     (x, y) => x.cmp(y),
                 });
+
+                let mut component_to_remove: Option<String> = None;
+
                 // FOR EACH COMPONENT
                 for (component_name, fields) in components {
-                    ui.label(RichText::new(&component_name).strong());
+                    ui.horizontal(|ui| {
+                        ui.label(RichText::new(&component_name).strong());
+                        if component_name != "Transform" && component_name != "Name" {
+                            ui.with_layout(Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.button("X").clicked() {
+                                    component_to_remove = Some(component_name.clone());
+                                }
+                            });
+                        }
+                    });
+
+                    if fields.is_empty() {
+                        ui.label("[ No exposed fields ]");
+                    }
+
                     let mut fctx = FieldContext {
                         ui,
                         world,
@@ -34,7 +51,9 @@ impl InspectorPanel {
                         fctx.index = index;
                         match field {
                             Field::F32(name, val) => fctx.show_f32(name, *val),
+                            Field::I32(name, val) => fctx.show_i32(name, *val),
                             Field::U32(name, val) => fctx.show_u32(name, *val),
+                            Field::Vec2(name, val) => fctx.show_vec2(name, *val),
                             Field::Vec3(name, val) => fctx.show_vec3(name, *val),
                             Field::UVec2(name, val) => fctx.show_uvec2(name, *val),
                             Field::NameString(name, val) => {
@@ -48,6 +67,12 @@ impl InspectorPanel {
                     }
                     ui.separator();
                 }
+
+                // Remove component if button was clicked
+                if let Some(component_name) = component_to_remove {
+                    world.remove_component_by_name(selected_entity.unwrap(), &component_name);
+                }
+
                 // Add Component Button
                 let registered_components = component_registry::get_registered_component_names();
                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {

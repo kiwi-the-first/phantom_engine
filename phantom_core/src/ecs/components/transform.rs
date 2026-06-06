@@ -48,7 +48,12 @@ impl Component for Transform {
 fn __register_transform() {
     crate::ecs::component_registry::register_component(
         "Transform",
-        ComponentEntry(__deserialize_transform, __add_default_transform, true),
+        ComponentEntry(
+            __deserialize_transform,
+            __add_default_transform,
+            __remove_transform,
+            true,
+        ),
     );
 }
 
@@ -60,6 +65,10 @@ fn __add_default_transform(entity: Entity) -> Box<dyn FnOnce(&mut World)> {
     Box::new(move |world| {
         world.add_component(entity, Transform::default());
     })
+}
+
+fn __remove_transform(world: &mut World, entity: Entity) {
+    world.remove_component::<Transform>(entity);
 }
 
 impl Default for Transform {
