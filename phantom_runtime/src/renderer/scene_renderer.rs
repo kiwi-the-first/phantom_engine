@@ -1,18 +1,20 @@
 use std::collections::HashMap;
+use std::path::PathBuf;
 
 use glam::Vec2;
+use phantom_assets::asset_manager::{AssetManager, asset_manager};
+use phantom_assets::texture_loader::asset_types::texture::Texture;
 use phantom_core::ecs::components::camera::{self, Camera};
 use phantom_core::ecs::components::{Sprite, Transform};
 use phantom_core::ecs::{Entity, World};
 use wgpu::util::DeviceExt;
 
-use crate::asset_manager::asset_types::texture::Texture;
 use crate::renderer::vertex::Vertex;
 
 pub struct SceneRenderer {
     render_pipeline: wgpu::RenderPipeline,
     bind_group_layout: wgpu::BindGroupLayout,
-    gpu_textures: HashMap<String, (wgpu::BindGroup, Vec2)>,
+    gpu_textures: HashMap<PathBuf, (wgpu::BindGroup, Vec2)>,
     camera_buffer: wgpu::Buffer,
     camera_bind_group_layout: wgpu::BindGroupLayout,
     camera_bind_group: wgpu::BindGroup,
@@ -188,7 +190,11 @@ impl SceneRenderer {
         (texture, view)
     }
 
-    pub fn build_sprite_verticies(&self, world: &World) -> (Vec<Vertex>, Vec<Entity>) {
+    pub fn build_sprite_verticies(
+        &self,
+        world: &World,
+        asset_manager: &AssetManager,
+    ) -> (Vec<Vertex>, Vec<Entity>) {
         let mut entities = world.query_with2::<Sprite, Transform>();
         entities.sort_by(|a, b| {
             let za = world
@@ -210,9 +216,14 @@ impl SceneRenderer {
                 let cos_a = angle.cos();
                 let sin_a = angle.sin();
 
+                let sprite_asset_id = &sprite.asset.0;
+                let Some(passet) = asset_manager.find_sprite_by_id(sprite_asset_id) else {
+                    return vec![];
+                };
+
                 let (tw, th) = self
                     .gpu_textures
-                    .get(&sprite.asset_path)
+                    .get(&passet.get_asset_path())
                     .map(|(_, dims)| (dims.x, dims.y))
                     .unwrap_or((1.0, 1.0));
 
@@ -294,9 +305,10 @@ impl SceneRenderer {
         encoder: &mut wgpu::CommandEncoder,
         view: &wgpu::TextureView,
         world: &World,
+        asset_manager: &AssetManager,
         viewport_size: Vec2,
     ) -> anyhow::Result<()> {
-        let (verticies, entities) = self.build_sprite_verticies(world);
+        let (verticies, entities) = self.build_sprite_verticies(world, asset_manager);
 
         let camera_matrix =
             if let Some(camera_entity) = world.query_with2::<Camera, Transform>().first() {
@@ -398,9 +410,15 @@ impl SceneRenderer {
                     let start = (index * 6) as u32;
                     let end = start + 6;
 
-                    if let Some((bind_group, _)) = self.gpu_textures.get(&sprite.asset_path) {
-                        render_pass.set_bind_group(0, bind_group, &[]);
-                        render_pass.draw(start..end, 0..1);
+                    let sprite_asset_id = &sprite.asset.0;
+
+                    if let Some(passet) = asset_manager.find_sprite_by_id(sprite_asset_id) {
+                        if let Some((bind_group, _)) =
+                            self.gpu_textures.get(&passet.get_asset_path())
+                        {
+                            render_pass.set_bind_group(0, bind_group, &[]);
+                            render_pass.draw(start..end, 0..1);
+                        }
                     }
                 }
             }
@@ -412,7 +430,7 @@ impl SceneRenderer {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
-        textures: &HashMap<String, Texture>,
+        textures: &HashMap<PathBuf, Texture>,
     ) {
         for (path, texture) in textures {
             if !self.gpu_textures.contains_key(path) {
@@ -494,7 +512,7 @@ impl SceneRenderer {
                 });
 
                 self.gpu_textures.insert(
-                    path.clone(),
+                    path.to_path_buf(),
                     (
                         bind_group,
                         Vec2::new(dimensions.0 as f32, dimensions.1 as f32),

@@ -1,4 +1,5 @@
-use crate::panels::{PanelViewer, Viewport};
+use crate::context::panel_context::PanelContext;
+use crate::panels::{PanelViewer, ViewportState};
 use crate::workspaces::Workspace;
 use crate::{actions::Actions, context::EditorContext};
 
@@ -10,7 +11,7 @@ use egui_dock::{DockArea, TabViewer};
 pub struct WorkspaceViewer<'a> {
     pub editor: &'a mut EditorContext,
     pub actions: &'a mut Actions,
-    pub viewport: &'a mut Viewport,
+    pub panel_context: &'a mut PanelContext,
 }
 
 impl<'a> TabViewer for WorkspaceViewer<'a> {
@@ -25,7 +26,7 @@ impl<'a> TabViewer for WorkspaceViewer<'a> {
         let mut panels = PanelViewer {
             editor_ctx: &mut *self.editor,
             actions: &mut *self.actions,
-            viewport: &mut *self.viewport,
+            panel_context: &mut *self.panel_context,
         };
         DockArea::new(&mut workspace.panel_dock_state)
             .id(Id::new(&workspace.name))

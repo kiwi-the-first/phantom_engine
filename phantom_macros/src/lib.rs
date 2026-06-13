@@ -51,6 +51,12 @@ fn type_to_get_expr(name: &syn::Ident, ty: &syn::Type) -> TokenStream2 {
         "Quat" | "glam::Quat" => {
             quote! { ::phantom_core::reflecton::fields::Field::TransQuat(stringify!(#name), self.#name) }
         }
+        "SpriteAsset" => {
+            quote! { ::phantom_core::reflecton::fields::Field::Sprite(stringify!(#name), self.#name.0) }
+        }
+        "AudioAsset" => {
+            quote! { ::phantom_core::reflecton::fields::Field::Audio(stringify!(#name), self.#name.0) }
+        }
         other => panic!(
             "Unsupported #[inspectable] type `{}`. Add a Field variant and update the macro.",
             other
@@ -87,6 +93,12 @@ fn type_to_set_expr(idx: usize, name: &syn::Ident, ty: &syn::Type) -> TokenStrea
         }
         "Quat" | "glam::Quat" => {
             quote! { if let ::phantom_core::reflecton::fields::Field::TransQuat(_, v) = &fields[#idx] { self.#name = *v; } }
+        }
+        "SpriteAsset" => {
+            quote! { if let ::phantom_core::reflecton::fields::Field::Sprite(_, v) = &fields[#idx] { self.#name = ::phantom_core::reflecton::asset_types::SpriteAsset(*v); } }
+        }
+        "AudioAsset" => {
+            quote! { if let ::phantom_core::reflecton::fields::Field::Audio(_, v) = &fields[#idx] { self.#name = ::phantom_core::reflecton::asset_types::AudioAsset(*v); } }
         }
         other => panic!(
             "Unsupported #[inspectable] type `{}`. Add a Field variant and update the macro.",

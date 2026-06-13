@@ -4,7 +4,6 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use egui_wgpu::ScreenDescriptor;
 use egui_wgpu::wgpu;
-use phantom_common::dirs;
 use phantom_core::scripting::ScriptContext;
 use phantom_project::project_manager::project_manager::ProjectManager;
 use winit::application::ApplicationHandler;
@@ -21,11 +20,13 @@ use phantom_runtime::renderer::state::State;
 
 use crate::actions::Actions;
 use crate::context::EditorContext;
+use crate::context::panel_context::PanelContext;
 use crate::dock::DockManager;
 use crate::egui::egui_renderer::EguiRenderer;
 use crate::logger::PhantomLogger;
-use crate::panels::Viewport;
+use crate::panels::{AssetBrowserState, ViewportState};
 use crate::shortcuts::EditorShortcuts;
+use crate::theme::EditorTheme;
 use crate::top_bar::TopBar;
 
 pub struct EditorApp {
@@ -35,8 +36,9 @@ pub struct EditorApp {
     is_closing: bool,
     dock: DockManager,
     editor_context: Option<EditorContext>,
+    panel_context: Option<PanelContext>,
     actions: Actions,
-    viewport: Option<Viewport>,
+    editor_theme: Option<EditorTheme>,
 }
 
 impl ApplicationHandler<State> for EditorApp {
@@ -72,17 +74,25 @@ impl ApplicationHandler<State> for EditorApp {
             log::error!("FAILED TO LOAD GAME WORLD! {e}");
         }
 
-        // The viewport owns its render target, scene renderer, and egui texture handle.
-        let viewport = Viewport::new(
-            &state.device,
-            &state.queue,
-            &mut egui_renderer,
-            egui::Vec2::new(800.0, 600.0),
-        );
+        let panel_context = PanelContext {
+            asset_browser: AssetBrowserState::new(),
+            viewport: ViewportState::new(
+                &state.device,
+                &state.queue,
+                &mut egui_renderer,
+                egui::Vec2::new(800.0, 600.0),
+            ),
+        };
 
+        if let Err(e) = ectx.asset_manager.init(&ectx.project_path) {
+            log::error!("FAILED TO INITIALIZE ASSET MANAGER! {e}");
+        }
+
+        let editor_theme = EditorTheme::default();
+        editor_theme.apply(egui_renderer.context());
         self.state = Some(state);
+        self.panel_context = Some(panel_context);
         self.egui_renderer = Some(egui_renderer);
-        self.viewport = Some(viewport);
     }
     #[allow(unused_mut)]
     fn user_event(&mut self, _event_loop: &ActiveEventLoop, mut event: State) {
@@ -136,6 +146,28 @@ impl ApplicationHandler<State> for EditorApp {
                 // can render here instead.
                 //self.window.as_ref().unwrap().request_redraw();
             }
+            WindowEvent::Focused(focused) => {
+                // When the window loses focus the OS may capture the pointer
+                // (e.g. for a drag-and-drop from an external app) and swallow
+                // the mouse-button-release event.  Egui never sees the release
+                // so it keeps thinking the button is held, which causes text
+                // selection / dragging to get stuck.  Sending PointerGone
+                // clears all pointer state so egui starts fresh on the next
+                // interaction.
+                if !focused {
+                    if let Some(egui_renderer) = &mut self.egui_renderer {
+                        egui_renderer.inject_event(egui::Event::PointerGone);
+                    }
+                }
+            }
+            WindowEvent::DroppedFile(file_path) => {
+                log::debug!("FILE DROPPED");
+                if let (Some(ectx), Some(pctx)) = (&mut self.editor_context, &self.panel_context) {
+                    ectx.asset_manager
+                        .import_asset(file_path, pctx.asset_browser.current_dir())
+                        .expect("FAILED TO IMPORT");
+                }
+            }
             WindowEvent::KeyboardInput {
                 event:
                     KeyEvent {
@@ -159,7 +191,7 @@ impl ApplicationHandler<State> for EditorApp {
 
         self.handle_redraw();
 
-        let viewport_info = self.viewport.as_ref().and_then(|v| v.info());
+        let viewport_info = self.panel_context.as_ref().and_then(|v| v.viewport.info());
         if let Some(ectx) = self.editor_context.as_mut() {
             if let Some(input_system) = ectx.input_system.as_mut() {
                 if let Some(info) = viewport_info {
@@ -183,18 +215,20 @@ impl EditorApp {
             is_closing: false,
             dock: DockManager::new(),
             editor_context: None,
+            panel_context: None,
             actions: Actions::new(),
-            viewport: None,
+            editor_theme: None,
         }
     }
 
     pub fn run(project_path: PathBuf) -> anyhow::Result<()> {
         let (project, init_world) = ProjectManager::load(project_path.clone())?;
 
-        let logger = PhantomLogger::new();
+        let max_level = Level::Trace;
+        let logger = PhantomLogger::new(max_level);
         let buffer = logger.buffer.clone();
         log::set_boxed_logger(Box::new(logger)).unwrap();
-        log::set_max_level(log::LevelFilter::Debug);
+        log::set_max_level(max_level.to_level_filter());
 
         let editor_context = EditorContext::new(project_path, project, init_world, buffer);
         let event_loop = EventLoop::with_user_event().build()?;
@@ -238,16 +272,16 @@ impl EditorApp {
                 state,
                 egui_renderer,
                 editor_context,
+                panel_context,
                 actions,
                 dock,
-                viewport,
                 ..
             } = self;
 
             let state = state.as_mut().unwrap();
             let egui_renderer = egui_renderer.as_mut().unwrap();
             let editor_context = editor_context.as_mut().unwrap();
-            let viewport = viewport.as_mut().unwrap();
+            let panel_context = panel_context.as_mut().unwrap();
 
             let screen_descriptor = ScreenDescriptor {
                 size_in_pixels: [state.config.width, state.config.height],
@@ -269,6 +303,7 @@ impl EditorApp {
 
             // Pin anchored UI to the camera before drawing (runs in edit mode too,
             // so anchored sprites preview correctly).
+            let viewport = &mut panel_context.viewport;
             let viewport_size = glam::Vec2::new(viewport.size().x, viewport.size().y);
             phantom_core::ui::update_anchors(&mut editor_context.active_world, viewport_size);
 
@@ -278,6 +313,7 @@ impl EditorApp {
                 &state.queue,
                 &mut encoder,
                 &editor_context.active_world,
+                &editor_context.asset_manager,
             );
 
             if editor_context.is_playing {
@@ -306,34 +342,24 @@ impl EditorApp {
             viewport.upload_textures(
                 &state.device,
                 &state.queue,
-                &editor_context.asset_manager.textures,
+                &editor_context.texture_loader.textures,
             );
 
             // EGUI FRAME
             let window = state.window.as_ref();
-            let ctx = egui_renderer.context().clone();
-            egui_renderer.begin_frame(window);
+            egui_renderer.run(window, |ctx| {
+                EditorShortcuts::handle(ctx, actions, editor_context);
 
-            EditorShortcuts::handle(&ctx, actions, editor_context);
+                let screen_rect = ctx.viewport_rect();
 
-            // EGUI THEMEING (todo: move me make a proper theming system)
-            let mut visuals = ctx.style().visuals.clone();
-            let black = egui::Color32::BLACK;
-            visuals.window_fill = black;
-            visuals.panel_fill = black;
-            visuals.extreme_bg_color = black;
-            visuals.selection.bg_fill = egui::Color32::from_hex("#8959d5").unwrap();
-            visuals.selection.stroke = egui::Stroke::new(1.0, egui::Color32::WHITE);
-            let screen_rect = ctx.viewport_rect();
-            ctx.set_visuals(visuals);
+                // DRAW HERE
+                egui::Area::new("main_dock_area".into()).show(ctx, |ui| {
+                    ui.set_max_size(screen_rect.size());
 
-            // DRAW HERE
-            egui::Area::new("main_dock_area".into()).show(&ctx, |ui| {
-                ui.set_max_size(screen_rect.size());
-
-                ui.vertical(|ui| {
-                    TopBar::show(ui, editor_context, dock);
-                    dock.ui(ui, editor_context, actions, viewport);
+                    ui.vertical(|ui| {
+                        TopBar::show(ui, editor_context, dock);
+                        dock.ui(ui, editor_context, actions, panel_context);
+                    });
                 });
             });
 
@@ -356,12 +382,15 @@ impl EditorApp {
         let Self {
             state,
             egui_renderer,
-            viewport,
+            panel_context,
             ..
         } = self;
-        if let (Some(state), Some(egui_renderer), Some(viewport)) =
-            (state.as_ref(), egui_renderer.as_mut(), viewport.as_mut())
-        {
+        if let (Some(state), Some(egui_renderer), Some(panel_context)) = (
+            state.as_ref(),
+            egui_renderer.as_mut(),
+            panel_context.as_mut(),
+        ) {
+            let viewport = &mut panel_context.viewport;
             viewport.apply_resize(&state.device, egui_renderer);
         }
     }

@@ -1,6 +1,7 @@
+use crate::context::panel_context::PanelContext;
 pub use crate::panels::Panels as Tab;
 use crate::panels::{
-    AssetBrowserPanel, ConsolePanel, HierarchyPanel, InspectorPanel, Viewport, ViewportPanel,
+    AssetBrowserPanel, ConsolePanel, HierarchyPanel, InspectorPanel, ViewportState, ViewportPanel,
 };
 use crate::{actions::Actions, context::EditorContext};
 use egui::{Ui, WidgetText};
@@ -11,7 +12,7 @@ use egui_dock::TabViewer;
 pub struct PanelViewer<'a> {
     pub editor_ctx: &'a mut EditorContext,
     pub actions: &'a mut Actions,
-    pub viewport: &'a mut Viewport,
+    pub panel_context: &'a mut PanelContext,
 }
 
 impl<'a> TabViewer for PanelViewer<'a> {
@@ -25,10 +26,10 @@ impl<'a> TabViewer for PanelViewer<'a> {
     fn ui(&mut self, ui: &mut Ui, tab: &mut Self::Tab) {
         match tab {
             Tab::Console => ConsolePanel::show(ui, self.editor_ctx),
-            Tab::Viewport => ViewportPanel::show(ui, self.editor_ctx, self.viewport),
+            Tab::Viewport => ViewportPanel::show(ui, self.editor_ctx, self.panel_context),
             Tab::Hierarchy => HierarchyPanel::show(ui, self.editor_ctx, self.actions),
             Tab::Inspector => InspectorPanel::show(ui, self.editor_ctx),
-            Tab::AssetBrowser => AssetBrowserPanel::show(ui),
+            Tab::AssetBrowser => AssetBrowserPanel::show(ui, self.editor_ctx, self.panel_context),
         };
     }
 }

@@ -5,7 +5,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use log::Log;
+use log::{Level, Log};
 use phantom_common::dirs::dirs;
 
 use crate::logger::LogEntry;
@@ -33,13 +33,15 @@ pub struct PhantomLogger {
     pub buffer: Arc<Mutex<VecDeque<LogEntry>>>,
     /// `None` if the log file couldn't be opened; logging still works in-memory.
     file: Mutex<Option<File>>,
+    max_level: Level,
 }
 
 impl PhantomLogger {
-    pub fn new() -> Self {
+    pub fn new(max_level: Level) -> Self {
         PhantomLogger {
             buffer: Arc::new(Mutex::new(VecDeque::with_capacity(MAX_ENTRIES))),
             file: Mutex::new(Self::create_log_file()),
+            max_level,
         }
     }
 
@@ -64,7 +66,7 @@ impl PhantomLogger {
 
 impl Log for PhantomLogger {
     fn enabled(&self, metadata: &log::Metadata) -> bool {
-        if metadata.level() > log::Level::Debug {
+        if metadata.level() > self.max_level {
             return false;
         }
         let target = metadata.target();

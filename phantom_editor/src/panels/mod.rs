@@ -9,8 +9,10 @@ pub use panel_viewer::PanelViewer;
 pub mod console;
 pub use console::ConsolePanel;
 
-pub mod viewport;
-pub use viewport::{Viewport, ViewportPanel};
+pub mod viewport_panel;
+pub use viewport_panel::ViewportPanel;
+pub mod viewport_state;
+pub use viewport_state::ViewportState;
 
 pub mod hierarchy;
 pub use hierarchy::HierarchyPanel;
@@ -18,5 +20,7 @@ pub use hierarchy::HierarchyPanel;
 pub mod inspector;
 pub use inspector::InspectorPanel;
 
-pub mod asset_browser;
-pub use asset_browser::AssetBrowserPanel;
+pub mod asset_browser_panel;
+pub use asset_browser_panel::AssetBrowserPanel;
+pub mod asset_browser_state;
+pub use asset_browser_state::AssetBrowserState;

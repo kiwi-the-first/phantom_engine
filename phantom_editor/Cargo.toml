@@ -9,6 +9,7 @@ phantom_project = { workspace = true }
 phantom_common  = { workspace = true }
 phantom_runtime = { workspace = true }
 phantom_build   = { workspace = true }
+phantom_assets  = { workspace = true }
 glam            = { workspace = true }
 anyhow          = { workspace = true }
 image           = { workspace = true, features = ["png"] }
@@ -26,3 +27,4 @@ serde_json      = { workspace = true }
 serde           = { workspace = true }
 bincode         = { workspace = true }
 parking_lot     = { workspace = true }
+uuid            = { workspace = true }

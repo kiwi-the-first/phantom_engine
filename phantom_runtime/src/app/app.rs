@@ -3,6 +3,9 @@ use std::sync::Arc;
 use crate::audio::AudioSystem;
 use glam::Vec2;
 use libloading::Library;
+use phantom_assets::asset_manager::{AssetManager, asset_manager};
+use phantom_assets::texture_loader::TextureLoader;
+use phantom_common::dirs;
 use phantom_common::dirs::dirs::PlayerDirs;
 use phantom_core::ecs::World;
 use phantom_core::input::InputSystem;
@@ -18,7 +21,6 @@ use winit::window::{Window, WindowId};
 
 use log::*;
 
-use crate::asset_manager::asset_manager::AssetManager;
 use crate::game_loader::game_loader::GameLoader;
 use crate::renderer::scene_renderer::SceneRenderer;
 use crate::renderer::state::State;
@@ -29,6 +31,7 @@ pub struct App {
     scene_renderer: Option<SceneRenderer>,
     world: Option<World>,
     asset_manager: Option<AssetManager>,
+    texture_loader: Option<TextureLoader>,
     input_system: Option<InputSystem>,
     time_system: Option<TimeSystem>,
     audio_system: AudioSystem,
@@ -72,12 +75,16 @@ impl ApplicationHandler<State> for App {
 
         let mut asset_manager = AssetManager::default();
 
-        match asset_manager.load_sprite_assets(&world, &PlayerDirs::data()) {
+        asset_manager.init(&dirs::PlayerDirs::data());
+
+        let mut texture_loader = TextureLoader::default();
+
+        match texture_loader.load_sprite_assets(&mut asset_manager) {
             Ok(_) => {
                 scene_renderer.upload_textures(
                     &state.device,
                     &state.queue,
-                    &asset_manager.textures,
+                    &texture_loader.textures,
                 );
                 log::info!("Sprites loaded successfully!")
             }
@@ -103,6 +110,7 @@ impl ApplicationHandler<State> for App {
         self.scene_renderer = Some(scene_renderer);
         self.world = Some(world);
         self.asset_manager = Some(asset_manager);
+        self.texture_loader = Some(texture_loader);
         self.input_system = Some(input_system);
         self.time_system = Some(time_system);
         self.game_dylib = Some(game_dylib);
@@ -180,12 +188,12 @@ impl ApplicationHandler<State> for App {
             .create_view(&wgpu::TextureViewDescriptor::default());
 
         // Pick up textures for any sprites spawned by scripts since the last frame.
-        if let (Some(world), Some(asset_manager)) = (&self.world, &mut self.asset_manager) {
-            if let Err(e) = asset_manager.load_sprite_assets(world, &PlayerDirs::data()) {
-                log::error!("Failed to load sprite assets: {e}");
-            }
-            scene_renderer.upload_textures(&state.device, &state.queue, &asset_manager.textures);
-        }
+        // if let (Some(world), Some(asset_manager)) = (&self.world, &mut self.texture_loader) {
+        //     if let Err(e) = asset_manager.load_sprite_assets(world, &PlayerDirs::data()) {
+        //         log::error!("Failed to load sprite assets: {e}");
+        //     }
+        //     scene_renderer.upload_textures(&state.device, &state.queue, &asset_manager.textures);
+        // }
 
         let mut encoder = state
             .device
@@ -193,7 +201,7 @@ impl ApplicationHandler<State> for App {
                 label: Some("Render Encoder"),
             });
         let viewport_size = Vec2::new(state.config.width as f32, state.config.height as f32);
-        if let Some(world) = &mut self.world {
+        if let (Some(world), Some(asset_manager)) = (&mut self.world, &self.asset_manager) {
             // Pin anchored UI to the camera before drawing.
             phantom_core::ui::update_anchors(world, viewport_size);
             if let Err(e) = scene_renderer.render(
@@ -202,6 +210,7 @@ impl ApplicationHandler<State> for App {
                 &mut encoder,
                 &view,
                 world,
+                asset_manager,
                 viewport_size,
             ) {
                 log::error!("Render failed: {e}");
@@ -245,8 +254,9 @@ impl App {
             state: None,
             scene_renderer: None,
             world: None,
-            game_dylib: None,
             asset_manager: None,
+            game_dylib: None,
+            texture_loader: None,
             input_system: None,
             time_system: None,
             audio_system: AudioSystem::default(),

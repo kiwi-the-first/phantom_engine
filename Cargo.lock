@@ -2377,6 +2377,15 @@ checksum = "9b4f627cb1b25917193a259e49bdad08f671f8d9708acfd5fe0a8c1455d87220"
 [[package]]
 name = "phantom_assets"
 version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "image",
+ "log",
+ "phantom_core",
+ "serde",
+ "serde_json",
+ "uuid",
+]
 
 [[package]]
 name = "phantom_build"
@@ -2384,6 +2393,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "log",
+ "phantom_assets",
  "phantom_common",
  "phantom_core",
  "phantom_project",
@@ -2419,6 +2429,7 @@ dependencies = [
  "phantom_macros",
  "serde",
  "serde_json",
+ "uuid",
  "winit",
 ]
 
@@ -2439,6 +2450,7 @@ dependencies = [
  "libloading 0.9.0",
  "log",
  "parking_lot",
+ "phantom_assets",
  "phantom_build",
  "phantom_common",
  "phantom_core",
@@ -2447,6 +2459,7 @@ dependencies = [
  "pollster",
  "serde",
  "serde_json",
+ "uuid",
  "winit",
 ]
 
@@ -2491,6 +2504,7 @@ dependencies = [
  "image",
  "libloading 0.9.0",
  "log",
+ "phantom_assets",
  "phantom_common",
  "phantom_core",
  "pollster",
@@ -3603,11 +3617,14 @@ checksum = "06abde3611657adf66d383f00b093d7faecc7fa57071cce2578660c9f1010821"
 
 [[package]]
 name = "uuid"
-version = "1.23.1"
+version = "1.23.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ddd74a9687298c6858e9b88ec8935ec45d22e8fd5e6394fa1bd4e99a87789c76"
+checksum = "d258b83ceec21034727ecee8c382cfa6c3e133699b0742c64571814fb420c9f7"
 dependencies = [
+ "getrandom 0.4.2",
+ "js-sys",
  "serde_core",
+ "wasm-bindgen",
 ]
 
 [[package]]

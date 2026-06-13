@@ -1,8 +1,9 @@
-use egui::{Color32, Ui};
+use egui::{Color32, Ui, accesskit::Uuid};
 use glam::{Quat, UVec2, Vec2, Vec3};
+use phantom_assets::asset_manager::{AssetManager, AssetType};
 use phantom_core::{
     ecs::{Entity, World},
-    reflecton::fields::Field,
+    reflecton::{asset_types::SpriteAsset, fields::Field},
 };
 
 pub struct FieldContext<'a> {
@@ -111,7 +112,6 @@ impl<'a> FieldContext<'a> {
             };
         });
     }
-
     pub fn show_vec2(&mut self, field_name: &'static str, value: Vec2) {
         let mut x = value.x;
         let mut y = value.y;
@@ -144,7 +144,6 @@ impl<'a> FieldContext<'a> {
             };
         });
     }
-
     pub fn show_uvec2(&mut self, field_name: &'static str, value: UVec2) {
         let mut x = value.x;
         let mut y = value.y;
@@ -177,7 +176,6 @@ impl<'a> FieldContext<'a> {
             };
         });
     }
-
     pub fn show_string(&mut self, field_name: &'static str, value: String) {
         let id_temp = egui::Id::new((self.selected_entity.id, self.component_name, self.index));
         let mut text = self
@@ -206,7 +204,6 @@ impl<'a> FieldContext<'a> {
             self.ui.data_mut(|w| w.insert_temp(id_temp, value.clone()));
         }
     }
-
     pub fn show_name_string(&mut self, field_name: &'static str, value: String) {
         let id_temp = egui::Id::new((
             self.selected_entity.id,
@@ -236,7 +233,6 @@ impl<'a> FieldContext<'a> {
             self.ui.data_mut(|w| w.insert_temp(id_temp, value.clone()));
         }
     }
-
     pub fn show_trans_quat(&mut self, field_name: &'static str, value: Quat) {
         let (rx, ry, rz) = value.to_euler(glam::EulerRot::XYZ);
         let mut x = rx.to_degrees();
@@ -311,7 +307,6 @@ impl<'a> FieldContext<'a> {
             };
         });
     }
-
     pub fn show_color(&mut self, field_name: &'static str, value: [u8; 4]) {
         let mut color = Color32::from_rgba_unmultiplied(value[0], value[1], value[2], value[3]);
         self.ui.horizontal(|ui| {
@@ -324,6 +319,51 @@ impl<'a> FieldContext<'a> {
                     self.selected_entity,
                     new_fields,
                 );
+            }
+        });
+    }
+    pub fn show_sprite(
+        &mut self,
+        asset_manager: &AssetManager,
+        field_name: &'static str,
+        value: Uuid,
+    ) {
+        self.ui.horizontal(|ui| {
+            ui.label(field_name);
+
+            let frame = egui::Frame::new()
+                .fill(ui.visuals().extreme_bg_color)
+                .stroke(ui.visuals().widgets.inactive.bg_stroke)
+                .corner_radius(4.0);
+
+            let display = if value.is_nil() {
+                "None (Sprite)".to_string()
+            } else {
+                asset_manager
+                    .find_sprite_by_id(&value)
+                    .and_then(|a| {
+                        a.get_asset_path()
+                            .file_stem()
+                            .map(|s| s.to_string_lossy().into_owned())
+                    })
+                    .unwrap_or_else(|| format!("Sprite {}", &value.to_string()[..8]))
+            };
+
+            let (_, payload) = ui.dnd_drop_zone::<(Uuid, AssetType), _>(frame, |ui| {
+                ui.label(display).on_hover_text(value.to_string());
+            });
+
+            if let Some(payload) = payload {
+                let (uuid, asset_type) = *payload;
+                if asset_type == AssetType::Sprite {
+                    let mut new_fields = self.fields.clone();
+                    new_fields[self.index] = Field::Sprite(field_name, uuid);
+                    self.world.set_component_fields(
+                        self.component_name.clone(),
+                        self.selected_entity,
+                        new_fields,
+                    );
+                }
             }
         });
     }

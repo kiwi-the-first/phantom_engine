@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["phantom_assets", "phantom_build", "phantom_cli", "phantom_common","phantom_core", "phantom_editor", "phantom_macros", "phantom_player", "phantom_project", "phantom_runtime"]
+members  = ["phantom_assets", "phantom_build", "phantom_cli", "phantom_common","phantom_core", "phantom_editor", "phantom_macros", "phantom_player", "phantom_project", "phantom_runtime"]
 
 [workspace.dependencies]
 # internal
@@ -9,7 +9,8 @@ phantom_common  = { path = "phantom_common" }
 phantom_project = { path = "phantom_project" }
 phantom_runtime = { path = "phantom_runtime" }
 phantom_macros  = { path = "phantom_macros" }
-phantom_build = { path = "phantom_build"}
+phantom_build   = { path = "phantom_build"}
+phantom_assets  = { path = "phantom_assets"}
 
 # external
 anyhow       = "1.0.102"
@@ -37,3 +38,4 @@ serde_json   = "1.0.149"
 syn          = "2.0.117"
 wgpu         = "29.0"
 winit        = "0.30"
+uuid         = { version = "1.23.2", features = ["serde", "v4"] }

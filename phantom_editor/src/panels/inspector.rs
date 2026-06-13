@@ -1,4 +1,4 @@
-use egui::{Layout, RichText, Ui};
+use egui::{FontFamily::Name, Layout, RichText, Ui};
 use phantom_core::{ecs::component_registry, reflecton::fields::Field};
 
 use crate::{context::EditorContext, panels::field_wigets::FieldContext};
@@ -62,6 +62,9 @@ impl InspectorPanel {
                             Field::String(name, val) => fctx.show_string(name, val.clone()),
                             Field::TransQuat(name, val) => fctx.show_trans_quat(name, *val),
                             Field::Color(name, val) => fctx.show_color(name, *val),
+                            Field::Sprite(name, val) => {
+                                fctx.show_sprite(&ectx.asset_manager, name, *val)
+                            }
                             _ => (),
                         }
                     }

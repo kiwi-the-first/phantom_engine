@@ -7,22 +7,21 @@ use crate::ecs::World;
 use crate::ecs::component::Component;
 use crate::ecs::component_registry::ComponentEntry;
 use crate::reflecton::Reflection;
+use crate::reflecton::asset_types::SpriteAsset;
 use crate::reflecton::fields::Field;
 
 #[derive(Debug, PartialEq, serde::Serialize, serde::Deserialize, Default)]
 pub struct Sprite {
-    pub asset_path: String,
+    pub asset: SpriteAsset,
 }
 
 impl Reflection for Sprite {
     fn get_fields(&self) -> Vec<Field> {
-        vec![Field::String("asset path", self.asset_path.clone())]
+        vec![Field::Sprite("asset path", self.asset.0)]
     }
     fn set_feilds(&mut self, fields: Vec<Field>) {
         match fields.get(0).unwrap() {
-            Field::String(_name, asset_path_field) => {
-                self.asset_path = asset_path_field.to_string()
-            }
+            Field::Sprite(_name, asset_field) => self.asset = SpriteAsset(*asset_field),
             _ => (),
         }
     }
@@ -60,9 +59,7 @@ fn __remove_sprite(world: &mut World, entity: Entity) {
 }
 
 impl Sprite {
-    pub fn new(asset_path: &'static str) -> Self {
-        Self {
-            asset_path: asset_path.to_string(),
-        }
+    pub fn new(asset: SpriteAsset) -> Self {
+        Self { asset: asset }
     }
 }

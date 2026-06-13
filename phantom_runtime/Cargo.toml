@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+phantom_assets = { workspace = true }
 phantom_core   = { workspace = true }
 phantom_common = { workspace = true }
 anyhow         = { workspace = true }

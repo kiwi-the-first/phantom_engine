@@ -6,6 +6,7 @@ use std::{
 
 use anyhow::{Ok, Result, anyhow};
 use libloading::Library;
+use phantom_assets::{asset_manager::AssetManager, texture_loader::TextureLoader};
 use phantom_build::BuildSystem;
 use phantom_core::{
     audio::AudioContext,
@@ -17,24 +18,29 @@ use phantom_core::{
 use phantom_project::{
     phantom_project::PhantomProject, project_manager::project_manager::ProjectManager,
 };
-use phantom_runtime::{
-    asset_manager::asset_manager::{self, AssetManager},
-    audio::AudioSystem,
-    game_loader::game_loader::GameLoader,
-};
+use phantom_runtime::{audio::AudioSystem, game_loader::game_loader::GameLoader};
 
 use crate::logger::LogEntry;
 
 pub struct EditorContext {
+    // Project Management
     pub project_path: PathBuf,
     pub project: PhantomProject,
     pub active_world: World,
-    pub selected_entity: Option<Entity>,
+
+    // Editor
     pub log_buffer: Arc<Mutex<VecDeque<LogEntry>>>,
+    pub selected_entity: Option<Entity>,
+
+    // Game Loading
+    pub build_system: BuildSystem,
     pub asset_manager: AssetManager,
+    pub texture_loader: TextureLoader,
     pub game_dylib: Option<Library>,
     pub is_playing: bool,
     pub world_snapshot: Option<Vec<u8>>,
+
+    // Systems
     pub input_system: Option<InputSystem>,
     pub time_system: Option<TimeSystem>,
     pub audio_system: AudioSystem,
@@ -47,19 +53,27 @@ impl EditorContext {
         world: World,
         log_buffer: Arc<Mutex<VecDeque<LogEntry>>>,
     ) -> Self {
-        let asset_manager = AssetManager::default();
         let input_system = InputSystem::default();
         let time_system = TimeSystem::default();
         Self {
+            // Project Management
             project_path: project_path,
             project: project,
             active_world: world,
-            selected_entity: None,
+
+            // Editor
             log_buffer,
-            asset_manager,
+            selected_entity: None,
+
+            // Game Loading
+            build_system: BuildSystem::default(),
+            asset_manager: AssetManager::default(),
+            texture_loader: TextureLoader::default(),
             game_dylib: None,
             is_playing: false,
             world_snapshot: None,
+
+            // Systems
             input_system: Some(input_system),
             time_system: Some(time_system),
             audio_system: AudioSystem::default(),
@@ -72,8 +86,11 @@ impl EditorContext {
         Ok(())
     }
 
-    pub fn build_project(&self) {
-        if let Err(e) = BuildSystem::build(self.project_path.clone()) {
+    pub fn build_project(&mut self) {
+        if let Err(e) = self
+            .build_system
+            .build(&mut self.asset_manager, self.project_path.clone())
+        {
             log::error!("FAILED TO BUILD GAME! {e}")
         }
     }
@@ -149,8 +166,8 @@ impl EditorContext {
     }
 
     pub fn sync_assets(&mut self) -> Result<()> {
-        self.asset_manager
-            .load_sprite_assets(&self.active_world, self.project_path.as_path())?;
+        self.texture_loader
+            .load_sprite_assets(&mut self.asset_manager)?;
         Ok(())
     }
 

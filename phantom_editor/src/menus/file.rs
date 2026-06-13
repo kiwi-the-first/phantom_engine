@@ -22,9 +22,7 @@ impl FileMenu {
                 log::warn!("YOU MUST EXIT PLAY MODE BEFORE BUILDING!");
                 return;
             };
-            if let Err(e) = BuildSystem::build(ectx.project_path.clone()) {
-                log::error!("FAILED TO BUILD PROJECT {e}");
-            }
+            ectx.build_project()
         }
         if ui.button("Reload Scripts").clicked() {
             if ectx.is_playing {

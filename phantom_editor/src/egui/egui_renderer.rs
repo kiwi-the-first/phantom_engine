@@ -12,7 +12,12 @@ use winit::{event::WindowEvent, window::Window};
 pub struct EguiRenderer {
     egui_state: State,
     pub wgpu_renderer: Renderer,
-    frame_started: bool,
+    /// Output of the pass produced by `run`, consumed by `end_frame_and_draw`.
+    full_output: Option<egui::FullOutput>,
+    /// Events to inject at the start of the next egui frame.
+    /// Used to synthesize things like PointerGone when the OS swallows
+    /// a mouse-release (e.g. during drag-and-drop from an external app).
+    pending_events: Vec<egui::Event>,
 }
 
 impl EguiRenderer {
@@ -49,7 +54,8 @@ impl EguiRenderer {
         Self {
             egui_state: egui_state,
             wgpu_renderer: egui_renderer,
-            frame_started: false,
+            full_output: None,
+            pending_events: Vec::new(),
         }
     }
 
@@ -69,10 +75,36 @@ impl EguiRenderer {
         self.context().set_pixels_per_point(v);
     }
 
-    pub fn begin_frame(&mut self, window: &Window) {
-        let raw_input = self.egui_state.take_egui_input(window);
-        self.egui_state.egui_ctx().begin_pass(raw_input);
-        self.frame_started = true;
+    /// Queue an egui event to be injected at the start of the next frame.
+    /// Useful for synthesising events the OS sometimes swallows
+    /// (e.g. pointer-gone during a drag-and-drop from an external app).
+    pub fn inject_event(&mut self, event: egui::Event) {
+        self.pending_events.push(event);
+    }
+
+    /// Run one egui pass, building the UI inside `build_ui`.
+    ///
+    /// Must go through `Context::run_ui` rather than the manual
+    /// `begin_pass`/`end_pass` API: only `run_ui` invokes egui's Plugin
+    /// pass callbacks, where `LabelSelectionState` ends text-selection
+    /// drags on mouse release and `DragAndDrop` clears stale payloads.
+    ///
+    /// `build_ui` may be called more than once if egui requests a
+    /// discard-and-repeat pass.
+    pub fn run(&mut self, window: &Window, mut build_ui: impl FnMut(&Context)) {
+        let mut raw_input = self.egui_state.take_egui_input(window);
+        if !self.pending_events.is_empty() {
+            // Prepend synthesised events so egui sees them before anything
+            // accumulated since the last frame.
+            let mut injected = std::mem::take(&mut self.pending_events);
+            injected.extend(raw_input.events);
+            raw_input.events = injected;
+        }
+        let full_output = self
+            .egui_state
+            .egui_ctx()
+            .run_ui(raw_input, |ui| build_ui(ui.ctx()));
+        self.full_output = Some(full_output);
     }
 
     pub fn end_frame_and_draw(
@@ -84,13 +116,12 @@ impl EguiRenderer {
         window_surface_view: &TextureView,
         screen_descriptor: ScreenDescriptor,
     ) {
-        if !self.frame_started {
-            panic!("begin_frame must be called before end_frame_and_draw can be called!");
-        }
+        let full_output = self
+            .full_output
+            .take()
+            .expect("run must be called before end_frame_and_draw can be called!");
 
         self.ppp(screen_descriptor.pixels_per_point);
-
-        let full_output = self.egui_state.egui_ctx().end_pass();
 
         self.egui_state
             .handle_platform_output(window, full_output.platform_output);
@@ -127,7 +158,5 @@ impl EguiRenderer {
         for x in &full_output.textures_delta.free {
             self.wgpu_renderer.free_texture(x)
         }
-
-        self.frame_started = false;
     }
 }

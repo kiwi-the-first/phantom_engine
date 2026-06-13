@@ -5,9 +5,9 @@ use egui_dock::{DockArea, DockState, NodeIndex, NodePath, Style, SurfaceIndex};
 
 use crate::{
     actions::Actions,
-    context::EditorContext,
+    context::{EditorContext, panel_context::PanelContext},
     dock::WorkspacePresets,
-    panels::Viewport,
+    panels::ViewportState,
     persitance::layout,
     workspaces::{Workspace, WorkspaceDescriptor, WorkspaceViewer},
 };
@@ -110,13 +110,13 @@ impl DockManager {
         ui: &mut Ui,
         editor: &mut EditorContext,
         actions: &mut Actions,
-        viewport: &mut Viewport,
+        panel_context: &mut PanelContext,
     ) {
         let show_close = self.dock_state.iter_all_tabs().count() > 1;
         let mut viewer = WorkspaceViewer {
             editor,
             actions,
-            viewport,
+            panel_context,
         };
         DockArea::new(&mut self.dock_state)
             .show_leaf_collapse_buttons(false)

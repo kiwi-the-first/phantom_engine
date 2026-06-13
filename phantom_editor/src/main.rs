@@ -14,10 +14,16 @@ pub mod menus;
 pub mod panels;
 pub mod persitance;
 pub mod shortcuts;
+pub mod theme;
 pub mod top_bar;
 pub mod workspaces;
 
 fn main() -> Result<()> {
+    // Enables drag and drop on linux
+    unsafe {
+        std::env::remove_var("WAYLAND_DISPLAY");
+    }
+
     let args: Vec<String> = std::env::args().collect();
     let path = PathBuf::from(args.get(1).unwrap());
     EditorApp::run(path).unwrap();
