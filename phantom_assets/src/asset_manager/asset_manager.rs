@@ -6,13 +6,13 @@ use std::{
     path::{Path, PathBuf},
 };
 
-use serde::Serialize;
 use uuid::Uuid;
 
-use crate::asset_manager::{PhantomAsset, asset_types::AssetType, phantom_asset};
+use crate::asset_manager::{
+    PhantomAsset, asset_types::AssetType, consts::PHANTOM_ASSET_EXTENSION, phantom_asset,
+};
 
 pub struct AssetManager {
-    pub phantom_asset_extension: &'static str,
     asset_storage_sprite: HashMap<uuid::Uuid, PhantomAsset>,
     asset_storage_audio: HashMap<uuid::Uuid, PhantomAsset>,
 }
@@ -20,7 +20,6 @@ pub struct AssetManager {
 impl Default for AssetManager {
     fn default() -> Self {
         Self {
-            phantom_asset_extension: "passet",
             asset_storage_sprite: HashMap::new(),
             asset_storage_audio: HashMap::new(),
         }
@@ -102,10 +101,10 @@ impl AssetManager {
     ///
     /// The full name is used (not the stem) so that `player.png` and
     /// `player.wav` in the same directory don't collide on one sidecar.
-    pub fn passet_path_for(&self, asset_path: &Path) -> PathBuf {
+    pub fn passet_path_for(asset_path: &Path) -> PathBuf {
         let mut path = asset_path.as_os_str().to_owned();
         path.push(".");
-        path.push(self.phantom_asset_extension);
+        path.push(PHANTOM_ASSET_EXTENSION);
         PathBuf::from(path)
     }
 
@@ -118,7 +117,7 @@ impl AssetManager {
     /// # Errors
     /// Returns an error if the sidecar file cannot be read or deserialised.
     pub fn find_uuid_and_asset_type(&self, src: &PathBuf) -> anyhow::Result<(Uuid, AssetType)> {
-        let file = read(self.passet_path_for(src))?;
+        let file = read(AssetManager::passet_path_for(src))?;
         let passet: PhantomAsset = serde_json::from_slice(&file)?;
         let uuid = passet.get_id();
         let asset_type = passet.get_asset_type();
@@ -147,6 +146,75 @@ impl AssetManager {
             _ => AssetType::Invalid,
         }
     }
+
+    pub fn update_passets_in_moved_dir(
+        &mut self,
+        dir: &Path,
+        old_base: &Path,
+        new_base: &Path,
+    ) -> anyhow::Result<()> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                self.update_passets_in_moved_dir(&path, old_base, new_base)?;
+            } else if path.extension().and_then(|e| e.to_str()) == Some(PHANTOM_ASSET_EXTENSION) {
+                let mut passet = AssetManager::deserialize(path.clone())?;
+                let old_asset_path = passet.get_asset_path();
+                let new_asset_path = old_asset_path
+                    .strip_prefix(old_base)
+                    .map(|rel| new_base.join(rel))
+                    .unwrap_or_else(|_| old_asset_path.clone());
+                passet.set_asset_path(new_asset_path);
+                let json = AssetManager::serialize(&passet)?;
+                let mut file = std::fs::File::create(&path)?;
+                file.write_all(&json)?;
+                self.update_asset(&passet.get_id(), &passet.get_asset_type(), passet);
+            }
+        }
+        Ok(())
+    }
+
+    pub fn remove_asset(&mut self, uuid: &Uuid, asset_type: &AssetType) {
+        match asset_type {
+            AssetType::Sprite => { self.asset_storage_sprite.remove(uuid); }
+            AssetType::Audio => { self.asset_storage_audio.remove(uuid); }
+            _ => {}
+        }
+    }
+
+    pub fn remove_assets_in_dir(&mut self, dir: &Path) -> anyhow::Result<()> {
+        for entry in std::fs::read_dir(dir)? {
+            let entry = entry?;
+            let path = entry.path();
+            if path.is_dir() {
+                self.remove_assets_in_dir(&path)?;
+            } else if path.extension().and_then(|e| e.to_str()) == Some(PHANTOM_ASSET_EXTENSION) {
+                let passet = AssetManager::deserialize(path)?;
+                self.remove_asset(&passet.get_id(), &passet.get_asset_type());
+            }
+        }
+        Ok(())
+    }
+
+    pub fn copy_dir_to(&mut self, src: &Path, dest: &Path) -> anyhow::Result<()> {
+        self.copy_dir_recursive(&src.to_path_buf(), &dest.to_path_buf())?;
+        self.scan_for_new_assets(&dest.to_path_buf())?;
+        Ok(())
+    }
+
+    pub fn update_asset(&mut self, uuid: &Uuid, asset_type: &AssetType, passet: PhantomAsset) {
+        match asset_type {
+            AssetType::Sprite => {
+                self.asset_storage_sprite.insert(*uuid, passet);
+            }
+            AssetType::Audio => {
+                self.asset_storage_audio.insert(*uuid, passet);
+            }
+            _ => {}
+        }
+    }
+
     /// Returns all sprite assets registered in [`AssetManager`]
     pub fn grab_all_registered_sprite_assets(&mut self) -> Vec<&mut PhantomAsset> {
         self.asset_storage_sprite.values_mut().collect()
@@ -158,6 +226,21 @@ impl AssetManager {
 
     pub fn find_sprite_by_id(&self, uuid: &Uuid) -> Option<&PhantomAsset> {
         self.asset_storage_sprite.get(uuid)
+    }
+
+    /// Deserializes a path to a `.passet`
+    ///
+    /// # Errors
+    /// Returns an error if file cannot be read or json cannot be deserialized.
+    pub fn deserialize(passet_path: PathBuf) -> anyhow::Result<PhantomAsset> {
+        let file = std::fs::read(passet_path)?;
+        let passet: PhantomAsset = serde_json::from_slice(&file)?;
+        Ok(passet)
+    }
+
+    pub fn serialize(passet: &PhantomAsset) -> anyhow::Result<Vec<u8>> {
+        let json = serde_json::to_vec(passet)?;
+        Ok(json)
     }
 
     /// Recursively copies `src` into `dest`, mirroring the directory tree.
@@ -207,7 +290,7 @@ impl AssetManager {
                 self.scan_for_passet_and_import(&entry.path(), root)?;
             } else if file_type.is_file()
                 && entry.path().extension().and_then(|e| e.to_str())
-                    == Some(self.phantom_asset_extension)
+                    == Some(PHANTOM_ASSET_EXTENSION)
             {
                 log::trace!(
                     "Found {} ... importing",
@@ -220,7 +303,7 @@ impl AssetManager {
                 }
                 // Migrate legacy stem-named sidecars (`player.passet`) to the
                 // full-name convention (`player.png.passet`).
-                let expected_path = self.passet_path_for(&passet.get_asset_path());
+                let expected_path = AssetManager::passet_path_for(&passet.get_asset_path());
                 if entry.path() != expected_path && passet.get_asset_path().is_file() {
                     log::info!(
                         "Migrating sidecar {} -> {}",
@@ -294,11 +377,11 @@ impl AssetManager {
     ///
     /// # Errors
     /// Returns an error if the file cannot be created or the JSON cannot be serialised.
-    fn create_passet_file(
+    pub fn create_passet_file(
         &self,
         file: &PathBuf,
     ) -> anyhow::Result<Option<(PhantomAsset, AssetType)>> {
-        if file.extension().and_then(|e| e.to_str()) == Some(self.phantom_asset_extension) {
+        if file.extension().and_then(|e| e.to_str()) == Some(PHANTOM_ASSET_EXTENSION) {
             return anyhow::Ok(None);
         }
 
@@ -307,7 +390,7 @@ impl AssetManager {
             return anyhow::Ok(None);
         }
 
-        let file_path = self.passet_path_for(file);
+        let file_path = AssetManager::passet_path_for(file);
 
         let passet = PhantomAsset::new(Uuid::new_v4(), asset_type, file.clone());
         let json = serde_json::to_vec(&passet)?;

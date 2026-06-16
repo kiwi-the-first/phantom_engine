@@ -1,0 +1,30 @@
+use phantom_core::{
+    ecs::{Entity, World},
+    phantom_macros::script,
+    scripting::{Script, ScriptContext},
+};
+
+#[script]
+pub struct {NAME} {
+    // Add fields here
+}
+
+impl Default for {NAME} {
+    fn default() -> Self {
+        Self {}
+    }
+}
+
+impl Script for {NAME} {
+    fn start(&mut self, entity: Entity, world: &mut World, ctx: &ScriptContext) {
+        // Runs once on the first frame.
+    }
+
+    fn update(&mut self, entity: Entity, world: &mut World, ctx: &ScriptContext) {
+        // Runs every frame.
+    }
+}
+
+impl {Name} {
+
+}

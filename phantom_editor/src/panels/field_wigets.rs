@@ -1,3 +1,5 @@
+use std::path::PathBuf;
+
 use egui::{Color32, Ui, accesskit::Uuid};
 use glam::{Quat, UVec2, Vec2, Vec3};
 use phantom_assets::asset_manager::{AssetManager, AssetType};
@@ -349,12 +351,18 @@ impl<'a> FieldContext<'a> {
                     .unwrap_or_else(|| format!("Sprite {}", &value.to_string()[..8]))
             };
 
-            let (_, payload) = ui.dnd_drop_zone::<(Uuid, AssetType), _>(frame, |ui| {
+            let (_, payload) = ui.dnd_drop_zone::<PathBuf, _>(frame, |ui| {
                 ui.label(display).on_hover_text(value.to_string());
             });
 
             if let Some(payload) = payload {
-                let (uuid, asset_type) = *payload;
+                let (uuid, asset_type) = match asset_manager.find_uuid_and_asset_type(&payload) {
+                    Ok(pair) => pair,
+                    Err(e) => {
+                        log::warn!("This is not a valid sprite asset {e}");
+                        return;
+                    }
+                };
                 if asset_type == AssetType::Sprite {
                     let mut new_fields = self.fields.clone();
                     new_fields[self.index] = Field::Sprite(field_name, uuid);

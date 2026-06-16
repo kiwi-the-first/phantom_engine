@@ -24,7 +24,7 @@ use crate::context::panel_context::PanelContext;
 use crate::dock::DockManager;
 use crate::egui::egui_renderer::EguiRenderer;
 use crate::logger::PhantomLogger;
-use crate::panels::{AssetBrowserState, ViewportState};
+use crate::panels::{ViewportState, asset_browser::AssetBrowserState};
 use crate::shortcuts::EditorShortcuts;
 use crate::theme::EditorTheme;
 use crate::top_bar::TopBar;
@@ -177,7 +177,7 @@ impl ApplicationHandler<State> for EditorApp {
                     },
                 ..
             } => match (code, key_state.is_pressed()) {
-                (KeyCode::Escape, true) => event_loop.exit(),
+                // (KeyCode::Escape, true) => event_loop.exit(),
                 _ => {}
             },
             _ => (),

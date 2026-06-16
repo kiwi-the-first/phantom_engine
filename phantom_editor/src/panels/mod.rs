@@ -20,7 +20,4 @@ pub use hierarchy::HierarchyPanel;
 pub mod inspector;
 pub use inspector::InspectorPanel;
 
-pub mod asset_browser_panel;
-pub use asset_browser_panel::AssetBrowserPanel;
-pub mod asset_browser_state;
-pub use asset_browser_state::AssetBrowserState;
+pub mod asset_browser;

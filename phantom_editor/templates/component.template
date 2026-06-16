@@ -1,0 +1,10 @@
+use phantom_core::phantom_macros::component;
+
+#[component]
+pub struct {NAME} {}
+
+impl Default for {NAME} {
+    fn default() -> Self {
+        Self {}
+    }
+}

@@ -1,7 +1,7 @@
 use crate::context::panel_context::PanelContext;
 pub use crate::panels::Panels as Tab;
 use crate::panels::{
-    AssetBrowserPanel, ConsolePanel, HierarchyPanel, InspectorPanel, ViewportState, ViewportPanel,
+    ConsolePanel, HierarchyPanel, InspectorPanel, ViewportPanel, asset_browser::AssetBrowserPanel,
 };
 use crate::{actions::Actions, context::EditorContext};
 use egui::{Ui, WidgetText};

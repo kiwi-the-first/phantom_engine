@@ -55,7 +55,7 @@ impl BuildSystem {
     ) -> anyhow::Result<()> {
         for asset_path in assets {
             let source = project_path.join(asset_path);
-            let passet_path = asset_manager.passet_path_for(&source);
+            let passet_path = AssetManager::passet_path_for(&source);
 
             let file = std::fs::read(passet_path)?;
             let mut passet: PhantomAsset = serde_json::from_slice(&file)?;
@@ -68,7 +68,7 @@ impl BuildSystem {
 
             let dest = dirs::BuildDirs::assets(&project_path).join(file_name);
 
-            let passet_dest = asset_manager.passet_path_for(&dest);
+            let passet_dest = AssetManager::passet_path_for(&dest);
             let passet_json = serde_json::to_vec(&passet)?;
             fs::write(&passet_dest, passet_json)?;
 
