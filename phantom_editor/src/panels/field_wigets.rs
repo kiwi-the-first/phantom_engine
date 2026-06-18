@@ -22,6 +22,20 @@ pub struct FieldContext<'a> {
 }
 
 impl<'a> FieldContext<'a> {
+    pub fn show_bool(&mut self, field_name: &'static str, mut value: bool) {
+        self.ui.horizontal(|ui| {
+            if ui.checkbox(&mut value, field_name).changed() {
+                let mut new_fields = self.fields.clone();
+                new_fields[self.index] = Field::Bool(field_name, value);
+                self.world.set_component_fields(
+                    self.component_name.clone(),
+                    self.selected_entity,
+                    new_fields,
+                );
+            }
+        });
+    }
+
     pub fn show_f32(&mut self, field_name: &'static str, mut value: f32) {
         self.ui.horizontal(|ui| {
             ui.label(field_name);

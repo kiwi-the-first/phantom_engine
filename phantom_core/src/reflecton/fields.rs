@@ -6,6 +6,7 @@ pub enum Field {
     NameString(&'static str, String),
     TransQuat(&'static str, Quat),
     String(&'static str, String),
+    Bool(&'static str, bool),
     F32(&'static str, f32),
     I32(&'static str, i32),
     U32(&'static str, u32),

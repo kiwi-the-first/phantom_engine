@@ -53,6 +53,7 @@ impl InspectorPanel {
                         for (index, field) in fields.iter().enumerate() {
                             fctx.index = index;
                             match field {
+                                Field::Bool(name, val) => fctx.show_bool(name, *val),
                                 Field::F32(name, val) => fctx.show_f32(name, *val),
                                 Field::I32(name, val) => fctx.show_i32(name, *val),
                                 Field::U32(name, val) => fctx.show_u32(name, *val),
