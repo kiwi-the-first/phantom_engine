@@ -48,7 +48,9 @@ impl ViewportPanel {
         let viewport = &mut panel_context.viewport;
         viewport.set_frame(size, info);
 
-        ui.image(egui::load::SizedTexture::new(viewport.texture_id(), size));
+        let image_rect = ui
+            .image(egui::load::SizedTexture::new(viewport.texture_id(), size))
+            .rect;
 
         if ectx.show_colliders {
             let viewport_w = size.x;
@@ -59,7 +61,7 @@ impl ViewportPanel {
             let scale = scale_x.min(scale_y);
             let half_w = (viewport_w / scale) / 2.0;
             let half_h = (viewport_h / scale) / 2.0;
-            let origin = ui.min_rect().min;
+            let origin = image_rect.min;
 
             let world_to_screen = |wx: f32, wy: f32| -> egui::Pos2 {
                 let ndc_x = (wx - camera_pos.x) / half_w;

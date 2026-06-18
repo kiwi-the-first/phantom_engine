@@ -166,6 +166,11 @@ impl ApplicationHandler<State> for EditorApp {
                     ectx.asset_manager
                         .import_asset(file_path, pctx.asset_browser.current_dir())
                         .expect("FAILED TO IMPORT");
+                    self.panel_context
+                        .as_mut()
+                        .unwrap()
+                        .asset_browser
+                        .should_create_entries = true;
                 }
             }
             WindowEvent::KeyboardInput {
@@ -224,7 +229,7 @@ impl EditorApp {
     pub fn run(project_path: PathBuf) -> anyhow::Result<()> {
         let (project, init_world) = ProjectManager::load(project_path.clone())?;
 
-        let max_level = Level::Trace;
+        let max_level = Level::Debug;
         let logger = PhantomLogger::new(max_level);
         let buffer = logger.buffer.clone();
         log::set_boxed_logger(Box::new(logger)).unwrap();

@@ -21,7 +21,7 @@ pub struct AssetBrowserState {
     pub directory_file_buttons: Vec<FileButton>,
     entries: Vec<DirEntry>,
     crud: AssetBrowserCRUD,
-    should_create_entries: bool,
+    pub should_create_entries: bool,
 }
 
 impl AssetBrowserState {
@@ -83,7 +83,6 @@ impl AssetBrowserState {
 
             self.directory_file_buttons.clear();
             for entry in &self.entries {
-                log::debug!("{}", self.directory_file_buttons.len());
                 let file_button = FileButton::new(entry.path());
                 self.directory_file_buttons.push(file_button);
             }
@@ -112,7 +111,8 @@ impl AssetBrowserState {
         }
 
         let width = ui.available_width();
-        let grid_length = (((width / self.button_scale) - self.grid_scaling_offset) as usize).max(1);
+        let grid_length =
+            (((width / self.button_scale) - self.grid_scaling_offset) as usize).max(1);
         let num_entries = self.entries.len();
         let num_rows = num_entries.div_ceil(grid_length);
 
@@ -171,22 +171,25 @@ impl AssetBrowserState {
             let mut name = self.crud.pending_new_component.take().unwrap();
             let mut confirm = false;
             let mut cancel = false;
-            egui::Modal::new(egui::Id::new("new_component"))
-                .show(ui.ctx(), |ui| {
-                    ui.set_min_width(200.0);
-                    ui.label("Component name:");
-                    let resp = ui.text_edit_singleline(&mut name);
-                    resp.request_focus();
-                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            egui::Modal::new(egui::Id::new("new_component")).show(ui.ctx(), |ui| {
+                ui.set_min_width(200.0);
+                ui.label("Component name:");
+                let resp = ui.text_edit_singleline(&mut name);
+                resp.request_focus();
+                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    confirm = true;
+                } else if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    cancel = true;
+                }
+                ui.horizontal(|ui| {
+                    if ui.button("Create").clicked() {
                         confirm = true;
-                    } else if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    }
+                    if ui.button("Cancel").clicked() {
                         cancel = true;
                     }
-                    ui.horizontal(|ui| {
-                        if ui.button("Create").clicked() { confirm = true; }
-                        if ui.button("Cancel").clicked() { cancel = true; }
-                    });
                 });
+            });
             if confirm && !name.is_empty() {
                 let dir = self.current_dir();
                 if let Err(e) = self.crud.confirm_create_component(&dir, &name) {
@@ -201,22 +204,25 @@ impl AssetBrowserState {
             let mut name = self.crud.pending_new_script.take().unwrap();
             let mut confirm = false;
             let mut cancel = false;
-            egui::Modal::new(egui::Id::new("new_script"))
-                .show(ui.ctx(), |ui| {
-                    ui.set_min_width(200.0);
-                    ui.label("Script name:");
-                    let resp = ui.text_edit_singleline(&mut name);
-                    resp.request_focus();
-                    if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+            egui::Modal::new(egui::Id::new("new_script")).show(ui.ctx(), |ui| {
+                ui.set_min_width(200.0);
+                ui.label("Script name:");
+                let resp = ui.text_edit_singleline(&mut name);
+                resp.request_focus();
+                if ui.input(|i| i.key_pressed(egui::Key::Enter)) {
+                    confirm = true;
+                } else if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    cancel = true;
+                }
+                ui.horizontal(|ui| {
+                    if ui.button("Create").clicked() {
                         confirm = true;
-                    } else if ui.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    }
+                    if ui.button("Cancel").clicked() {
                         cancel = true;
                     }
-                    ui.horizontal(|ui| {
-                        if ui.button("Create").clicked() { confirm = true; }
-                        if ui.button("Cancel").clicked() { cancel = true; }
-                    });
                 });
+            });
             if confirm && !name.is_empty() {
                 let dir = self.current_dir();
                 if let Err(e) = self.crud.confirm_create_script(&dir, &name) {
@@ -275,11 +281,9 @@ impl AssetBrowserState {
                 ui.add_space(-8.0);
                 ui.label("/");
                 if response.clicked() {
-                    log::debug!("{index}");
                     let last_index = self.directory_nav_paths.len() - 1;
-                    log::debug!("{last_index}");
+
                     if index != last_index {
-                        log::debug!("CLICKED");
                         self.directory_nav_paths.truncate(index + 1);
                     }
                     self.should_create_entries = true;

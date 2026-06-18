@@ -142,7 +142,9 @@ impl World {
             .and_then(|sparse_set| sparse_set.get_mut(entity.id))
     }
 
-    // pub fn has_component<C>(entity_id, component) -> bool {}
+    pub fn has_component<C: Component>(&self, entity: Entity) -> bool {
+        self.get_component::<C>(entity).is_some()
+    }
 
     // TODO: Change to return Vec<(u32, &C)>
     pub fn query_with<C: Component>(&self) -> Vec<Entity> {
