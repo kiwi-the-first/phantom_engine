@@ -112,9 +112,9 @@ impl AssetBrowserState {
         }
 
         let width = ui.available_width();
-        let grid_length = (width / self.button_scale) - self.grid_scaling_offset;
+        let grid_length = (((width / self.button_scale) - self.grid_scaling_offset) as usize).max(1);
         let num_entries = self.entries.len();
-        let num_rows = num_entries.div_ceil(grid_length as usize);
+        let num_rows = num_entries.div_ceil(grid_length);
 
         egui::ScrollArea::vertical().show(ui, |ui| {
             egui::Grid::new("asset_browser")
@@ -123,7 +123,7 @@ impl AssetBrowserState {
                 .show(ui, |ui| {
                     let mut i = 0;
                     for _row in 0..num_rows {
-                        for _col in 0..grid_length as usize {
+                        for _col in 0..grid_length {
                             if i >= num_entries {
                                 break;
                             }

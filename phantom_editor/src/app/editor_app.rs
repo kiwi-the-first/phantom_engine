@@ -314,13 +314,16 @@ impl EditorApp {
                 &mut encoder,
                 &editor_context.active_world,
                 &editor_context.asset_manager,
+                editor_context.is_playing,
             );
 
             if editor_context.is_playing {
+                let delta;
                 {
                     let (active_world, input_system, time_system, audio_ctx) = editor_context
                         .get_world_and_systems()
                         .expect("FAILED TO GET WORLD AND SYSTEMS!");
+                    delta = time_system.time_ctx.delta;
                     let script_ctx = ScriptContext {
                         input: &input_system.input_ctx,
                         time: &time_system.time_ctx,
@@ -331,6 +334,11 @@ impl EditorApp {
                         &script_ctx,
                     );
                 }
+                phantom_core::animation::AnimationSystem::update(
+                    &mut editor_context.active_world,
+                    delta,
+                );
+                phantom_core::collision::CollisionSystem::update(&mut editor_context.active_world);
                 // Drain sounds the update scripts queued, then reap finished ones.
                 editor_context.audio_system.update();
             }
@@ -348,7 +356,7 @@ impl EditorApp {
             // EGUI FRAME
             let window = state.window.as_ref();
             egui_renderer.run(window, |ctx| {
-                EditorShortcuts::handle(ctx, actions, editor_context);
+                //EditorShortcuts::handle(ctx, actions, editor_context);
 
                 let screen_rect = ctx.viewport_rect();
 

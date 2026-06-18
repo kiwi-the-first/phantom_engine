@@ -1,4 +1,6 @@
+pub mod animation;
 pub mod audio;
+pub mod collision;
 pub mod constants;
 pub mod ecs;
 pub mod input;

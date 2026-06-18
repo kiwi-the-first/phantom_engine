@@ -48,7 +48,9 @@ impl TopBar {
             ui.style_mut().visuals.widgets.hovered.corner_radius = CornerRadius::from(1.0);
             ui.style_mut().visuals.widgets.active.corner_radius = CornerRadius::from(1.0);
 
-            let play_clicked = ui.add_sized([40.0, 20.0], egui::Button::new("▶")).clicked();
+            let play_clicked = ui
+                .add_sized([40.0, 20.0], egui::Button::new("▶").selected(editor.is_playing))
+                .clicked();
 
             ui.add_space(-5.0);
 

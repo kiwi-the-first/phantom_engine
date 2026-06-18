@@ -78,6 +78,7 @@ impl ViewportState {
         encoder: &mut wgpu::CommandEncoder,
         world: &World,
         asset_manager: &AssetManager,
+        is_playing: bool,
     ) {
         let view = self.texture.create_view(&wgpu::TextureViewDescriptor {
             format: Some(wgpu::TextureFormat::Rgba8UnormSrgb),
@@ -86,7 +87,7 @@ impl ViewportState {
         let size = glam::Vec2::new(self.size.x, self.size.y);
         if let Err(e) =
             self.scene_renderer
-                .render(device, queue, encoder, &view, world, asset_manager, size)
+                .render(device, queue, encoder, &view, world, asset_manager, size, is_playing)
         {
             log::error!("Scene render failed: {e}");
         }

@@ -212,6 +212,7 @@ impl ApplicationHandler<State> for App {
                 world,
                 asset_manager,
                 viewport_size,
+                true,
             ) {
                 log::error!("Render failed: {e}");
             };
@@ -237,6 +238,8 @@ impl ApplicationHandler<State> for App {
                 };
                 ScriptScheduler::run_all_update_scripts(world, &script_ctx);
             }
+            phantom_core::animation::AnimationSystem::update(world, time_system.time_ctx.delta);
+            phantom_core::collision::CollisionSystem::update(world);
             // Drain sounds the update scripts queued, then reap finished ones.
             self.audio_system.update();
 

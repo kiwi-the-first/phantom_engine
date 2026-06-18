@@ -1,5 +1,6 @@
-use egui::{FontFamily::Name, Layout, RichText, Ui};
-use phantom_core::{ecs::component_registry, reflecton::fields::Field};
+use egui::{Layout, RichText, Ui};
+use phantom_core::ecs::component_registry;
+use phantom_core::reflecton::fields::Field;
 
 use crate::{context::EditorContext, panels::field_wigets::FieldContext};
 
@@ -22,7 +23,6 @@ impl InspectorPanel {
 
                 let mut component_to_remove: Option<String> = None;
 
-                // FOR EACH COMPONENT
                 for (component_name, fields) in components {
                     ui.horizontal(|ui| {
                         ui.label(RichText::new(&component_name).strong());
@@ -35,10 +35,6 @@ impl InspectorPanel {
                         }
                     });
 
-                    if fields.is_empty() {
-                        ui.label("[ No exposed fields ]");
-                    }
-
                     let mut fctx = FieldContext {
                         ui,
                         world,
@@ -47,54 +43,53 @@ impl InspectorPanel {
                         fields: &fields,
                         index: 0,
                     };
-                    for (index, field) in fields.iter().enumerate() {
-                        fctx.index = index;
-                        match field {
-                            Field::F32(name, val) => fctx.show_f32(name, *val),
-                            Field::I32(name, val) => fctx.show_i32(name, *val),
-                            Field::U32(name, val) => fctx.show_u32(name, *val),
-                            Field::Vec2(name, val) => fctx.show_vec2(name, *val),
-                            Field::Vec3(name, val) => fctx.show_vec3(name, *val),
-                            Field::UVec2(name, val) => fctx.show_uvec2(name, *val),
-                            Field::NameString(name, val) => {
-                                fctx.show_name_string(name, val.clone())
+
+                    if component_name == "Animator" {
+                        fctx.show_animator(&ectx.asset_manager);
+                    } else {
+                        if fields.is_empty() {
+                            fctx.ui.label("[ No exposed fields ]");
+                        }
+                        for (index, field) in fields.iter().enumerate() {
+                            fctx.index = index;
+                            match field {
+                                Field::F32(name, val) => fctx.show_f32(name, *val),
+                                Field::I32(name, val) => fctx.show_i32(name, *val),
+                                Field::U32(name, val) => fctx.show_u32(name, *val),
+                                Field::Vec2(name, val) => fctx.show_vec2(name, *val),
+                                Field::Vec3(name, val) => fctx.show_vec3(name, *val),
+                                Field::UVec2(name, val) => fctx.show_uvec2(name, *val),
+                                Field::NameString(name, val) => fctx.show_name_string(name, val.clone()),
+                                Field::String(name, val) => fctx.show_string(name, val.clone()),
+                                Field::TransQuat(name, val) => fctx.show_trans_quat(name, *val),
+                                Field::Color(name, val) => fctx.show_color(name, *val),
+                                Field::Sprite(name, val) => fctx.show_sprite(&ectx.asset_manager, name, *val),
+                                _ => (),
                             }
-                            Field::String(name, val) => fctx.show_string(name, val.clone()),
-                            Field::TransQuat(name, val) => fctx.show_trans_quat(name, *val),
-                            Field::Color(name, val) => fctx.show_color(name, *val),
-                            Field::Sprite(name, val) => {
-                                fctx.show_sprite(&ectx.asset_manager, name, *val)
-                            }
-                            _ => (),
                         }
                     }
                     ui.separator();
                 }
 
-                // Remove component if button was clicked
                 if let Some(component_name) = component_to_remove {
                     world.remove_component_by_name(selected_entity.unwrap(), &component_name);
                 }
 
-                // Add Component Button
                 let registered_components = component_registry::get_registered_component_names();
                 ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                    let response = ui
-                        .menu_button("ADD COMPONENT", |ui| {
-                            for component in registered_components {
-                                if component.as_str() != "Transform" && component.as_str() != "Name"
-                                {
-                                    if ui.button(component.as_str()).clicked() {
-                                        component_registry::add_component_by_name(
-                                            world,
-                                            selected_entity.unwrap(),
-                                            component.as_str(),
-                                        );
-                                    };
-                                }
+                    ui.menu_button("ADD COMPONENT", |ui| {
+                        for component in registered_components {
+                            if component.as_str() != "Transform" && component.as_str() != "Name" {
+                                if ui.button(component.as_str()).clicked() {
+                                    component_registry::add_component_by_name(
+                                        world,
+                                        selected_entity.unwrap(),
+                                        component.as_str(),
+                                    );
+                                };
                             }
-                        })
-                        .response;
+                        }
+                    });
                 });
             }
         }

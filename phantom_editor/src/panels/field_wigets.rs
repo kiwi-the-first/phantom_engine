@@ -1,12 +1,16 @@
 use std::path::PathBuf;
 
-use egui::{Color32, Ui, accesskit::Uuid};
+use egui::{Color32, Ui};
 use glam::{Quat, UVec2, Vec2, Vec3};
 use phantom_assets::asset_manager::{AssetManager, AssetType};
 use phantom_core::{
-    ecs::{Entity, World},
+    ecs::{
+        Entity, World,
+        components::{Animator, Sprite},
+    },
     reflecton::{asset_types::SpriteAsset, fields::Field},
 };
+use uuid::Uuid;
 
 pub struct FieldContext<'a> {
     pub ui: &'a mut Ui,
@@ -374,5 +378,191 @@ impl<'a> FieldContext<'a> {
                 }
             }
         });
+    }
+
+    pub fn show_animator(&mut self, asset_manager: &AssetManager) {
+        let Some(anim) = self.world.get_component::<Animator>(self.selected_entity) else {
+            return;
+        };
+
+        let mut playing = anim.playing;
+        let old_current = anim.current;
+        let mut current = anim.current;
+        let mut sprite_ids = anim.sprite_ids.clone();
+        let mut frame_widths = anim.frame_widths.clone();
+        let mut frame_heights = anim.frame_heights.clone();
+        let mut frame_counts = anim.frame_counts.clone();
+        let mut fps_vec = anim.fps.clone();
+        let mut looping = anim.looping.clone();
+
+        let mut changed = false;
+        let mut remove_idx: Option<usize> = None;
+
+        self.ui.horizontal(|ui| {
+            if ui.checkbox(&mut playing, "Playing").changed() {
+                changed = true;
+            }
+            ui.label("Clip:");
+            let max = sprite_ids.len().saturating_sub(1);
+            if ui
+                .add(egui::DragValue::new(&mut current).range(0..=max))
+                .changed()
+            {
+                changed = true;
+            }
+        });
+
+        for i in 0..sprite_ids.len() {
+            self.ui.separator();
+            self.ui.horizontal(|ui| {
+                ui.label(format!("Clip {i}"));
+                if ui.small_button("X").clicked() {
+                    remove_idx = Some(i);
+                    changed = true;
+                }
+            });
+            self.ui.horizontal(|ui| {
+                ui.label("Sprite");
+                let frame = egui::Frame::new()
+                    .fill(ui.visuals().extreme_bg_color)
+                    .stroke(ui.visuals().widgets.inactive.bg_stroke)
+                    .corner_radius(4.0);
+                let display = if sprite_ids[i].is_nil() {
+                    "None (Sprite)".to_string()
+                } else {
+                    asset_manager
+                        .find_sprite_by_id(&sprite_ids[i])
+                        .and_then(|a| {
+                            a.get_asset_path()
+                                .file_stem()
+                                .map(|s| s.to_string_lossy().into_owned())
+                        })
+                        .unwrap_or_else(|| "Unknown".to_string())
+                };
+                let (_, payload) = ui.dnd_drop_zone::<PathBuf, _>(frame, |ui| {
+                    ui.label(display);
+                });
+                if let Some(path) = payload {
+                    match asset_manager.find_uuid_and_asset_type(&path) {
+                        Ok((uuid, AssetType::Sprite)) => {
+                            sprite_ids[i] = uuid;
+                            changed = true;
+                        }
+                        Ok(_) => log::warn!("Dropped asset is not a sprite"),
+                        Err(e) => log::warn!("Invalid asset drop: {e}"),
+                    }
+                }
+            });
+            self.ui.horizontal(|ui| {
+                ui.label("Frame Width");
+                if ui.add(egui::DragValue::new(&mut frame_widths[i])).changed() {
+                    changed = true;
+                }
+            });
+            self.ui.horizontal(|ui| {
+                ui.label("Frame Height");
+                if ui
+                    .add(egui::DragValue::new(&mut frame_heights[i]))
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            self.ui.horizontal(|ui| {
+                ui.label("Frame Count");
+                if ui
+                    .add(egui::DragValue::new(&mut frame_counts[i]).range(1..=u32::MAX))
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            self.ui.horizontal(|ui| {
+                ui.label("FPS");
+                if ui
+                    .add(
+                        egui::DragValue::new(&mut fps_vec[i])
+                            .speed(0.5)
+                            .range(0.0..=240.0),
+                    )
+                    .changed()
+                {
+                    changed = true;
+                }
+            });
+            self.ui.horizontal(|ui| {
+                if ui.checkbox(&mut looping[i], "Loop").changed() {
+                    changed = true;
+                }
+            });
+        }
+
+        if self.ui.button("+ Add Clip").clicked() {
+            sprite_ids.push(Uuid::nil());
+            frame_widths.push(0);
+            frame_heights.push(0);
+            frame_counts.push(1);
+            fps_vec.push(12.0);
+            looping.push(true);
+            changed = true;
+        }
+
+        if changed {
+            if let Some(i) = remove_idx {
+                if i < sprite_ids.len() {
+                    sprite_ids.remove(i);
+                }
+                if i < frame_widths.len() {
+                    frame_widths.remove(i);
+                }
+                if i < frame_heights.len() {
+                    frame_heights.remove(i);
+                }
+                if i < frame_counts.len() {
+                    frame_counts.remove(i);
+                }
+                if i < fps_vec.len() {
+                    fps_vec.remove(i);
+                }
+                if i < looping.len() {
+                    looping.remove(i);
+                }
+            }
+
+            // Capture the original sprite to restore BEFORE writing the new state,
+            // so we can apply it synchronously — avoids a one-frame flash of the
+            // raw sprite sheet when Playing is toggled off.
+            let orig_to_restore = if !playing {
+                self.world
+                    .get_component_mut::<Animator>(self.selected_entity)
+                    .and_then(|anim| anim.original_sprite.take())
+            } else {
+                None
+            };
+
+            if let Some(anim) = self
+                .world
+                .get_component_mut::<Animator>(self.selected_entity)
+            {
+                anim.playing = playing;
+                let new_current = current.min(sprite_ids.len().saturating_sub(1));
+                if new_current != old_current {
+                    anim.frame = 0.0;
+                }
+                anim.current = new_current;
+                anim.sprite_ids = sprite_ids;
+                anim.frame_widths = frame_widths;
+                anim.frame_heights = frame_heights;
+                anim.frame_counts = frame_counts;
+                anim.fps = fps_vec;
+                anim.looping = looping;
+            }
+
+            if let Some(orig) = orig_to_restore {
+                if let Some(sprite) = self.world.get_component_mut::<Sprite>(self.selected_entity) {
+                    sprite.asset = SpriteAsset(orig);
+                }
+            }
+        }
     }
 }

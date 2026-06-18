@@ -38,6 +38,7 @@ pub struct EditorContext {
     pub texture_loader: TextureLoader,
     pub game_dylib: Option<Library>,
     pub is_playing: bool,
+    pub show_colliders: bool,
     pub world_snapshot: Option<Vec<u8>>,
 
     // Systems
@@ -71,6 +72,7 @@ impl EditorContext {
             texture_loader: TextureLoader::default(),
             game_dylib: None,
             is_playing: false,
+            show_colliders: false,
             world_snapshot: None,
 
             // Systems

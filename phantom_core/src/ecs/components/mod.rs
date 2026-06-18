@@ -12,3 +12,9 @@ pub use camera::Camera;
 
 pub mod anchor;
 pub use anchor::Anchor;
+
+pub mod collider;
+pub use collider::Collider;
+
+pub mod animator;
+pub use animator::Animator;

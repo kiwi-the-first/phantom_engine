@@ -194,6 +194,7 @@ impl SceneRenderer {
         &self,
         world: &World,
         asset_manager: &AssetManager,
+        is_playing: bool,
     ) -> (Vec<Vertex>, Vec<Entity>) {
         let mut entities = world.query_with2::<Sprite, Transform>();
         entities.sort_by(|a, b| {
@@ -207,19 +208,27 @@ impl SceneRenderer {
                 .unwrap_or(0.0);
             za.partial_cmp(&zb).unwrap_or(std::cmp::Ordering::Equal)
         });
-        let vertices = entities
+        let pairs: Vec<(Entity, Vec<Vertex>)> = entities
             .iter()
-            .flat_map(|entity| {
+            .filter_map(|entity| {
                 let transform = world.get_component::<Transform>(*entity).unwrap();
                 let sprite = world.get_component::<Sprite>(*entity).unwrap();
                 let (_, _, angle) = transform.rotation.to_euler(glam::EulerRot::XYZ);
                 let cos_a = angle.cos();
                 let sin_a = angle.sin();
 
-                let sprite_asset_id = &sprite.asset.0;
-                let Some(passet) = asset_manager.find_sprite_by_id(sprite_asset_id) else {
-                    return vec![];
+                // If the animator was just stopped this frame (original_sprite still set),
+                // use the original sprite immediately so there's no one-frame strip flash.
+                let effective_sprite_id = if is_playing {
+                    world
+                        .get_component::<phantom_core::ecs::components::Animator>(*entity)
+                        .and_then(|anim| if !anim.playing { anim.original_sprite } else { None })
+                        .unwrap_or(sprite.asset.0)
+                } else {
+                    sprite.asset.0
                 };
+
+                let passet = asset_manager.find_sprite_by_id(&effective_sprite_id)?;
 
                 let (tw, th) = self
                     .gpu_textures
@@ -227,13 +236,47 @@ impl SceneRenderer {
                     .map(|(_, dims)| (dims.x, dims.y))
                     .unwrap_or((1.0, 1.0));
 
-                let sx = transform.scale.x * tw / 2.0;
-                let sy = transform.scale.y * th / 2.0;
+                let (u0, u1, v0, v1, frame_tw, frame_th) = if is_playing {
+                    world
+                        .get_component::<phantom_core::ecs::components::Animator>(*entity)
+                        .and_then(|anim| {
+                            if !anim.playing || anim.sprite_ids.is_empty() { return None; }
+                            let fw = *anim.frame_widths.get(anim.current)? as f32;
+                            let fh = *anim.frame_heights.get(anim.current)? as f32;
+                            if fw <= 0.0 || tw <= 0.0 {
+                                let count = anim.frame_counts.get(anim.current).copied().unwrap_or(1);
+                                if count > 1 {
+                                    log::warn!("Animator clip {}: frame_width=0 with {count} frames; set frame_width to slice the sheet", anim.current);
+                                }
+                                return None;
+                            }
+                            let fi = anim.frame.floor() as usize;
+                            if fh > 0.0 && th > 0.0 {
+                                let cols = (tw / fw).floor() as usize;
+                                let col = fi % cols.max(1);
+                                let row = fi / cols.max(1);
+                                let u0 = col as f32 * fw / tw;
+                                let u1 = (col as f32 + 1.0) * fw / tw;
+                                let v0 = row as f32 * fh / th;
+                                let v1 = (row as f32 + 1.0) * fh / th;
+                                Some((u0, u1, v0, v1, fw, fh))
+                            } else {
+                                let fi = fi as f32;
+                                Some((fi * fw / tw, (fi + 1.0) * fw / tw, 0.0, 1.0, fw, th))
+                            }
+                        })
+                        .unwrap_or((0.0, 1.0, 0.0, 1.0, tw, th))
+                } else {
+                    (0.0, 1.0, 0.0, 1.0, tw, th)
+                };
+
+                let sx = transform.scale.x * frame_tw / 2.0;
+                let sy = transform.scale.y * frame_th / 2.0;
                 let px = transform.position.x;
                 let py = transform.position.y;
                 let pz = transform.position.z;
 
-                let vertices: Vec<Vertex> = vec![
+                let verts = vec![
                     // Triangle 1
                     Vertex {
                         position: [
@@ -241,24 +284,24 @@ impl SceneRenderer {
                             (-sx * sin_a + sy * cos_a) + py,
                             pz,
                         ],
-                        tex_coords: [0.0, 0.0],
-                    }, // Top Left
+                        tex_coords: [u0, v0],
+                    },
                     Vertex {
                         position: [
                             (-sx * cos_a + sy * sin_a) + px,
                             (-sx * sin_a - sy * cos_a) + py,
                             pz,
                         ],
-                        tex_coords: [0.0, 1.0],
-                    }, // Bottom Left
+                        tex_coords: [u0, v1],
+                    },
                     Vertex {
                         position: [
                             (sx * cos_a + sy * sin_a) + px,
                             (sx * sin_a - sy * cos_a) + py,
                             pz,
                         ],
-                        tex_coords: [1.0, 1.0],
-                    }, // Bottom Right
+                        tex_coords: [u1, v1],
+                    },
                     // Triangle 2
                     Vertex {
                         position: [
@@ -266,30 +309,33 @@ impl SceneRenderer {
                             (-sx * sin_a + sy * cos_a) + py,
                             pz,
                         ],
-                        tex_coords: [0.0, 0.0],
-                    }, // Top Left
+                        tex_coords: [u0, v0],
+                    },
                     Vertex {
                         position: [
                             (sx * cos_a + sy * sin_a) + px,
                             (sx * sin_a - sy * cos_a) + py,
                             pz,
                         ],
-                        tex_coords: [1.0, 1.0],
-                    }, // Bottom Right
+                        tex_coords: [u1, v1],
+                    },
                     Vertex {
                         position: [
                             (sx * cos_a - sy * sin_a) + px,
                             (sx * sin_a + sy * cos_a) + py,
                             pz,
                         ],
-                        tex_coords: [1.0, 0.0],
-                    }, // Top Right
+                        tex_coords: [u1, v0],
+                    },
                 ];
 
-                vertices
+                Some((*entity, verts))
             })
             .collect();
-        (vertices, entities)
+
+        let rendered_entities: Vec<Entity> = pairs.iter().map(|(e, _)| *e).collect();
+        let vertices: Vec<Vertex> = pairs.into_iter().flat_map(|(_, v)| v).collect();
+        (vertices, rendered_entities)
     }
 
     pub fn resize(&mut self, device: &wgpu::Device, width: u32, height: u32) {
@@ -307,8 +353,9 @@ impl SceneRenderer {
         world: &World,
         asset_manager: &AssetManager,
         viewport_size: Vec2,
+        is_playing: bool,
     ) -> anyhow::Result<()> {
-        let (verticies, entities) = self.build_sprite_verticies(world, asset_manager);
+        let (verticies, entities) = self.build_sprite_verticies(world, asset_manager, is_playing);
 
         let camera_matrix =
             if let Some(camera_entity) = world.query_with2::<Camera, Transform>().first() {
