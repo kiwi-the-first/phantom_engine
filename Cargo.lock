@@ -2523,10 +2523,10 @@ name = "phantom_project"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "bincode",
  "log",
  "phantom_core",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -79,7 +79,7 @@ fn create_pproject_file(
         version: version.to_string(),
         entry_world: world_path,
     };
-    let bytes = bincode::serialize::<PhantomProject>(&pproject).unwrap();
+    let bytes = serde_json::to_vec_pretty(&pproject).unwrap();
     std::fs::write(path.join(format!("{}.pproject", &pproject.name)), bytes)?;
     Ok(pproject)
 }

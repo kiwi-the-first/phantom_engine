@@ -56,7 +56,7 @@ impl ProjectManager {
                 panic!(".pproject cannot be found");
             });
         let bytes = std::fs::read(&pproject_path)?;
-        let pproject = bincode::deserialize::<PhantomProject>(&bytes)?;
+        let pproject = serde_json::from_slice::<PhantomProject>(&bytes)?;
         Ok(pproject)
     }
 }
