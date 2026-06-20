@@ -42,7 +42,7 @@ impl ProjectManager {
     /// Panics if no `.pproject` file is found in the directory
     pub fn get_pproject(path: &PathBuf) -> Result<PhantomProject> {
         let pproject_path = std::fs::read_dir(path)
-            .unwrap()
+            .map_err(|e| anyhow::anyhow!("Cannot open project directory '{}': {e}", path.display()))?
             .filter_map(|entry| entry.ok())
             .find(|entry| {
                 entry
@@ -51,10 +51,7 @@ impl ProjectManager {
                     .map_or(false, |ext| ext == "pproject")
             })
             .map(|entry| entry.path())
-            .unwrap_or_else(|| {
-                log::error!(".pproject cannot be found");
-                panic!(".pproject cannot be found");
-            });
+            .ok_or_else(|| anyhow::anyhow!("No .pproject file found in '{}'", path.display()))?;
         let bytes = std::fs::read(&pproject_path)?;
         let pproject = serde_json::from_slice::<PhantomProject>(&bytes)?;
         Ok(pproject)

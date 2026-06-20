@@ -91,7 +91,81 @@ impl AssetManager {
     /// Returns an error if the directory cannot be read or a `.passet` file
     /// cannot be deserialised.
     pub fn init(&mut self, project_root: &PathBuf) -> anyhow::Result<()> {
-        self.scan_for_passet_and_import(project_root, project_root)?;
+        self.rebuild_sidecars(project_root, project_root)?;
+        Ok(())
+    }
+
+    /// Walks the project tree and rebuilds every `.passet` sidecar from scratch.
+    ///
+    /// For each asset file found, if a sidecar already exists its UUID is
+    /// preserved so that world component references remain valid. The sidecar
+    /// is then rewritten with the correct absolute path for the current machine.
+    /// Sidecars with no matching asset file are deleted.
+    fn rebuild_sidecars(&mut self, dir: &PathBuf, root: &PathBuf) -> anyhow::Result<()> {
+        let entries: Vec<DirEntry> = std::fs::read_dir(dir)
+            .unwrap()
+            .filter_map(|e| e.ok())
+            .collect();
+
+        for entry in entries {
+            let path = entry.path();
+            let file_type = entry.file_type()?;
+
+            if file_type.is_dir() {
+                if path == root.join("build") {
+                    continue;
+                }
+                self.rebuild_sidecars(&path, root)?;
+                continue;
+            }
+
+            if !file_type.is_file() {
+                continue;
+            }
+
+            let ext = path.extension().and_then(|e| e.to_str());
+
+            // Delete sidecars whose asset file no longer sits beside them.
+            // We derive the asset path from the sidecar filename rather than
+            // trusting the stored path, which may be from another machine.
+            if ext == Some(PHANTOM_ASSET_EXTENSION) {
+                let asset_path = path.with_extension("");
+                if !asset_path.exists() {
+                    log::trace!("Removing orphaned sidecar {}", path.to_string_lossy());
+                    let _ = std::fs::remove_file(&path);
+                }
+                continue;
+            }
+
+            let asset_type = self.determine_asset_type(path.clone());
+            if asset_type == AssetType::Invalid {
+                continue;
+            }
+
+            let sidecar_path = AssetManager::passet_path_for(&path);
+
+            // Reuse the existing UUID if a sidecar is present so world
+            // references aren't broken when the project moves machines.
+            let uuid = if sidecar_path.exists() {
+                AssetManager::deserialize(sidecar_path.clone())
+                    .map(|p| p.get_id())
+                    .unwrap_or_else(|_| Uuid::new_v4())
+            } else {
+                Uuid::new_v4()
+            };
+
+            let passet = PhantomAsset::new(uuid, asset_type, path.clone());
+            let json = serde_json::to_vec(&passet)?;
+            std::fs::write(&sidecar_path, json)?;
+
+            log::trace!("Rebuilt sidecar for {}", path.to_string_lossy());
+
+            match asset_type {
+                AssetType::Sprite => { self.asset_storage_sprite.insert(uuid, passet); }
+                AssetType::Audio  => { self.asset_storage_audio.insert(uuid, passet); }
+                _ => {}
+            }
+        }
 
         Ok(())
     }
