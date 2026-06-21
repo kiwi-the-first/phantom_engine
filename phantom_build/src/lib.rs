@@ -210,11 +210,15 @@ impl BuildSystem {
     }
 
     fn compile_dylib(project_path: &PathBuf, project_name: &String) -> anyhow::Result<()> {
-        std::process::Command::new("cargo")
+        let status = std::process::Command::new("cargo")
             .args(["build", "--release", "--manifest-path"])
             .arg(project_path.join("Cargo.toml"))
             .current_dir(project_path)
             .status()?;
+
+        if !status.success() {
+            anyhow::bail!("cargo build failed with exit code {:?}", status.code());
+        }
 
         #[cfg(windows)]
         let dylib_name = format!("{}.dll", project_name);

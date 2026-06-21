@@ -127,7 +127,14 @@ impl EditorContext {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_millis();
-        let shadow_path = data_dir.join(format!("_hot_{}.so", timestamp));
+        #[cfg(windows)]
+        let hot_ext = "dll";
+        #[cfg(target_os = "macos")]
+        let hot_ext = "dylib";
+        #[cfg(not(any(windows, target_os = "macos")))]
+        let hot_ext = "so";
+
+        let shadow_path = data_dir.join(format!("_hot_{}.{}", timestamp, hot_ext));
         std::fs::copy(&dylib_path, &shadow_path)?;
         log::info!("Shadow copy: {:?}", shadow_path);
 
@@ -146,7 +153,7 @@ impl EditorContext {
         for entry in std::fs::read_dir(&data_dir)?.filter_map(|e| e.ok()) {
             let name = entry.file_name();
             let name = name.to_string_lossy();
-            if name.starts_with("_hot_") && name.ends_with(".so") {
+            if name.starts_with("_hot_") && name.ends_with(hot_ext) {
                 if entry.path() != shadow_path {
                     let _ = std::fs::remove_file(entry.path());
                 }
