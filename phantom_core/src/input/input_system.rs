@@ -8,19 +8,29 @@ use crate::input::{InputContext, input_context::ViewportInfo};
 
 pub struct InputSystem {
     pub input_ctx: InputContext,
+    // DPI scale factor — keeps mouse_pos in logical pixels to match egui/viewport coords.
+    scale_factor: f32,
 }
 
 impl Default for InputSystem {
     fn default() -> Self {
         Self {
             input_ctx: InputContext::default(),
+            scale_factor: 1.0,
         }
     }
 }
 
 impl InputSystem {
+    pub fn set_scale_factor(&mut self, sf: f64) {
+        self.scale_factor = sf as f32;
+    }
+
     pub fn handle_event(&mut self, event: &WindowEvent) {
         match event {
+            WindowEvent::ScaleFactorChanged { scale_factor, .. } => {
+                self.scale_factor = *scale_factor as f32;
+            }
             WindowEvent::KeyboardInput {
                 event: key_event, ..
             } => {
@@ -40,7 +50,12 @@ impl InputSystem {
                 }
             }
             WindowEvent::CursorMoved { position, .. } => {
-                let new_pos = Vec2::new(position.x as f32, position.y as f32);
+                // CursorMoved gives physical pixels; divide by scale_factor to match
+                // the logical-pixel space used by egui (editor) and viewport info.
+                let new_pos = Vec2::new(
+                    position.x as f32 / self.scale_factor,
+                    position.y as f32 / self.scale_factor,
+                );
                 // Only accumulate delta once we have a previous position, so the
                 // first event doesn't report a huge spurious jump.
                 if let Some(prev) = self.input_ctx.mouse_pos {

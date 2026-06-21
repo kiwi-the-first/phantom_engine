@@ -94,7 +94,8 @@ impl ApplicationHandler<State> for App {
         }
 
         let time_system = TimeSystem::default();
-        let input_system = InputSystem::default();
+        let mut input_system = InputSystem::default();
+        input_system.set_scale_factor(state.window.scale_factor());
         {
             let script_ctx = ScriptContext {
                 input: &input_system.input_ctx,
@@ -280,7 +281,13 @@ impl App {
     fn gather_viewport_info(&self) -> anyhow::Result<ViewportInfo> {
         let state = self.state.as_ref().expect("FAILED TO GATHER STATE!");
 
-        let window_size = Vec2::new(state.config.width as f32, state.config.height as f32);
+        // Divide physical surface size by the DPI scale factor to get logical pixels,
+        // matching the space that mouse_pos is now stored in.
+        let scale = state.window.scale_factor() as f32;
+        let window_size = Vec2::new(
+            state.config.width as f32 / scale,
+            state.config.height as f32 / scale,
+        );
 
         let (camera_pos, zoom, ref_res) = self
             .world

@@ -88,6 +88,10 @@ impl ApplicationHandler<State> for EditorApp {
             log::error!("FAILED TO INITIALIZE ASSET MANAGER! {e}");
         }
 
+        if let Some(input_system) = ectx.input_system.as_mut() {
+            input_system.set_scale_factor(window.scale_factor());
+        }
+
         let editor_theme = EditorTheme::default();
         editor_theme.apply(egui_renderer.context());
         self.state = Some(state);
