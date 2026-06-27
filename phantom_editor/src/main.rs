@@ -24,8 +24,18 @@ fn main() -> Result<()> {
         std::env::remove_var("WAYLAND_DISPLAY");
     }
 
-    let args: Vec<String> = std::env::args().collect();
-    let path = PathBuf::from(args.get(1).unwrap());
-    EditorApp::run(path).unwrap();
+    let path = std::env::var("PHANTOM_PROJECT_ROOT")
+        .map(PathBuf::from)
+        .or_else(|_| {
+            std::env::args()
+                .nth(1)
+                .map(PathBuf::from)
+                .ok_or_else(|| {
+                    anyhow::anyhow!(
+                        "Missing project path. Pass the project root as the first argument or set PHANTOM_PROJECT_ROOT."
+                    )
+                })
+        })?;
+    EditorApp::run(path)?;
     Ok(())
 }
