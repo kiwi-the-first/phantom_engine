@@ -61,6 +61,10 @@ impl ApplicationHandler<State> for EditorApp {
 
         let ectx = self.editor_context.as_mut().unwrap();
 
+        if let Err(e) = ectx.asset_manager.init(&ectx.project_path) {
+            log::error!("FAILED TO INITIALIZE ASSET MANAGER! {e}");
+        }
+
         // LOAD TEXTURES ON STARTUP
         ectx.sync_assets().expect("COULD NOT LOAD ASSETS");
         // BUILD GAME CODE
@@ -83,10 +87,6 @@ impl ApplicationHandler<State> for EditorApp {
                 egui::Vec2::new(800.0, 600.0),
             ),
         };
-
-        if let Err(e) = ectx.asset_manager.init(&ectx.project_path) {
-            log::error!("FAILED TO INITIALIZE ASSET MANAGER! {e}");
-        }
 
         if let Some(input_system) = ectx.input_system.as_mut() {
             input_system.set_scale_factor(window.scale_factor());

@@ -15,13 +15,22 @@ pub struct TextureLoader {
 }
 
 impl TextureLoader {
-    pub fn load_sprite_assets(&mut self, asset_manager: &mut AssetManager) -> Result<()> {
+    pub fn load_sprite_assets(
+        &mut self,
+        asset_manager: &mut AssetManager,
+        asset_root: &Path,
+    ) -> Result<()> {
         let sprites = asset_manager.grab_all_registered_sprite_assets();
 
         for sprite in sprites {
             let path = sprite.get_asset_path();
             if !self.textures.contains_key(&path) {
-                let sprite_bytes = std::fs::read(&path)?;
+                let sprite_path = if path.is_absolute() {
+                    path.clone()
+                } else {
+                    asset_root.join(&path)
+                };
+                let sprite_bytes = std::fs::read(&sprite_path)?;
                 let sprite_image = image::load_from_memory(&sprite_bytes)?;
                 let sprite_rgba = sprite_image.to_rgba8();
                 let texture = Texture {

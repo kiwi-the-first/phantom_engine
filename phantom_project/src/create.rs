@@ -74,10 +74,14 @@ fn create_pproject_file(
 ) -> Result<PhantomProject> {
     let path = path.canonicalize()?;
     let version = phantom_core::constants::VERSION;
+    let entry_world = world_path
+        .strip_prefix(&path)
+        .map(PathBuf::from)
+        .unwrap_or(world_path);
     let pproject = PhantomProject {
         name: name,
         version: version.to_string(),
-        entry_world: world_path,
+        entry_world,
     };
     let bytes = serde_json::to_vec_pretty(&pproject).unwrap();
     std::fs::write(path.join(format!("{}.pproject", &pproject.name)), bytes)?;

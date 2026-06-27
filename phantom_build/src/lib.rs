@@ -24,7 +24,7 @@ impl BuildSystem {
 
         BuildSystem::create_build_dirs(&project_path)?;
 
-        let asset_paths = BuildSystem::collect_sprite_assets(asset_manager);
+        let asset_paths = BuildSystem::collect_assets(asset_manager);
         BuildSystem::copy_assets(&asset_paths, &project_path, asset_manager)?;
         //BuildSystem::update_sprite_paths(asset_manager)?;
         let world_bytes = world.serialize();
@@ -39,36 +39,48 @@ impl BuildSystem {
         Ok(())
     }
     fn create_build_dirs(build_path: &PathBuf) -> anyhow::Result<()> {
-        let assets_path = dirs::BuildDirs::assets(&build_path);
-        log::trace!("Creating directories {}", assets_path.to_string_lossy());
-        std::fs::create_dir_all(assets_path)?;
+        let data_path = dirs::BuildDirs::data(&build_path);
+        log::trace!("Creating directories {}", data_path.to_string_lossy());
+        std::fs::create_dir_all(data_path)?;
         Ok(())
     }
-    fn collect_sprite_assets(asset_manager: &mut AssetManager) -> Vec<PathBuf> {
-        let sprite_assets = asset_manager.grab_all_registered_sprite_assets();
-        sprite_assets.iter().map(|s| s.get_asset_path()).collect()
+    fn collect_assets(asset_manager: &mut AssetManager) -> Vec<PathBuf> {
+        let mut asset_paths: Vec<PathBuf> = asset_manager
+            .grab_all_registered_sprite_assets()
+            .iter()
+            .map(|s| s.get_asset_path())
+            .collect();
+
+        asset_paths.extend(
+            asset_manager
+                .grab_all_registered_audio_assets()
+                .iter()
+                .map(|a| a.get_asset_path()),
+        );
+
+        asset_paths
     }
     fn copy_assets(
         assets: &[PathBuf],
         project_path: &PathBuf,
-        asset_manager: &mut AssetManager,
+        _asset_manager: &mut AssetManager,
     ) -> anyhow::Result<()> {
         for asset_path in assets {
             let source = project_path.join(asset_path);
             let passet_path = AssetManager::passet_path_for(&source);
 
             let file = std::fs::read(passet_path)?;
-            let mut passet: PhantomAsset = serde_json::from_slice(&file)?;
+            let passet: PhantomAsset = serde_json::from_slice(&file)?;
 
-            let file_name = source.file_name().ok_or(anyhow::anyhow!(
-                "invalid asset path: {}",
-                asset_path.to_string_lossy()
-            ))?;
-            passet.set_asset_path(PathBuf::from("assets").join(file_name));
-
-            let dest = dirs::BuildDirs::assets(&project_path).join(file_name);
+            let dest = dirs::BuildDirs::data(project_path).join(asset_path);
+            if let Some(parent) = dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
 
             let passet_dest = AssetManager::passet_path_for(&dest);
+            if let Some(parent) = passet_dest.parent() {
+                fs::create_dir_all(parent)?;
+            }
             let passet_json = serde_json::to_vec(&passet)?;
             fs::write(&passet_dest, passet_json)?;
 

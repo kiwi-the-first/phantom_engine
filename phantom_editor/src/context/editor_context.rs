@@ -176,7 +176,7 @@ impl EditorContext {
 
     pub fn sync_assets(&mut self) -> Result<()> {
         self.texture_loader
-            .load_sprite_assets(&mut self.asset_manager)?;
+            .load_sprite_assets(&mut self.asset_manager, &self.project_path)?;
         Ok(())
     }
 

@@ -20,6 +20,7 @@ fn new_sidecars_use_full_file_name() {
     std::fs::write(&wav, b"fake wav").unwrap();
 
     let mut manager = AssetManager::default();
+    manager.init(&project).unwrap();
     manager.import_asset(png, project.clone()).unwrap();
     manager.import_asset(wav, project.clone()).unwrap();
 

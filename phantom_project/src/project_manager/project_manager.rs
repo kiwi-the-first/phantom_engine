@@ -14,7 +14,7 @@ impl ProjectManager {
     /// * `path` - Path to the **project root directory** containing the `.pproject` file
     pub fn load(path: PathBuf) -> Result<(PhantomProject, World)> {
         let pproject = ProjectManager::get_pproject(&path)?;
-        let world_path = path.parent().unwrap().join(&pproject.entry_world);
+        let world_path = path.join(&pproject.entry_world);
         let world_bytes = std::fs::read(&world_path)?;
         let world = World::deserialize(&world_bytes);
         Ok((pproject, world))
@@ -27,7 +27,7 @@ impl ProjectManager {
     /// * `world` - The world to serialize and save
     pub fn save(path: PathBuf, world: &World) -> anyhow::Result<()> {
         let pproject = ProjectManager::get_pproject(&path)?;
-        let world_path = path.parent().unwrap().join(&pproject.entry_world);
+        let world_path = path.join(&pproject.entry_world);
         let world_data = world.serialize();
         let mut file = std::fs::File::create(&world_path)?;
         file.write_all(&world_data)?;

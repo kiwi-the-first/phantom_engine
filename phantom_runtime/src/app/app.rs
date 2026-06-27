@@ -79,7 +79,7 @@ impl ApplicationHandler<State> for App {
 
         let mut texture_loader = TextureLoader::default();
 
-        match texture_loader.load_sprite_assets(&mut asset_manager) {
+        match texture_loader.load_sprite_assets(&mut asset_manager, &dirs::PlayerDirs::data()) {
             Ok(_) => {
                 scene_renderer.upload_textures(
                     &state.device,
